@@ -1,0 +1,13 @@
+﻿{
+  "Name": "Missing",
+
+  "DrawableShader": true,
+
+  "SubShaders": [
+    {
+      "Vertex": "MissingVertex",
+      "Fragment": "MissingFragment"
+    }
+  ]
+
+}

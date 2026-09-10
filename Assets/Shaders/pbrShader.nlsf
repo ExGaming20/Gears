@@ -1,0 +1,12 @@
+﻿{
+  "Name": "pbrShader",
+
+  "DrawableShader": true,
+
+  "SubShaders": [
+    {
+      "Vertex": "BaseVertex",
+      "Fragment": "BaseFragment"
+    }
+  ]
+}
