@@ -320,6 +320,11 @@ public class GameObject
         _children.Clear();
     }
 
+    public List<GameObject> GetChildrenHierarchy()
+    {
+        return _children;
+    }
+
     // -----------------------------------------------------------------------
     // Destruction
     // -----------------------------------------------------------------------
@@ -355,6 +360,19 @@ public class GameObject
     {
         if (root.Name == name) return root;
         return root.FindChild(name);
+    }
+
+    public static GameObject? Find(string name)
+    {
+        var activeScene = SceneManager.ActiveScene;
+        if (activeScene == null) return null;
+
+        foreach (var obj in activeScene.RootObjects)
+        {
+            var found = Find(name, obj);
+            if (found != null) return found;
+        }
+        return null;
     }
 
     public static GameObject? FindWithTag(string tag, GameObject root)

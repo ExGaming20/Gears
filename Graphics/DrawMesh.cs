@@ -64,7 +64,7 @@ namespace Gears.Graphics
             vao.Unbind();
         }
 
-        public void Draw(Shader shader, Matrix4 model, Matrix4 view, Matrix4 projection, Material material, float timeSinceStart, Layer objectLayer)
+        public void Draw(Shader shader, Matrix4 model, Matrix4 view, Matrix4 projection, Material material, float timeSinceStart, Layer objectLayer, int shadowMap2DHandle = -1, int shadowMapCubeHandle = -1)
         {
             if (shader == null)
             {
@@ -93,6 +93,24 @@ namespace Gears.Graphics
                 _maxTextureUnits = GL.GetInteger(GetPName.MaxTextureImageUnits);
 
             int textureUnit = 0;
+
+            // Shadow map arrays are raw GL objects (not Texture-wrapped — see ShadowMapRenderer),
+            // so they're bound directly here instead of through Texture.Use().
+            if (shadowMap2DHandle != -1 && textureUnit < _maxTextureUnits && DoesUniformExist(shader, "shadowMap2D"))
+            {
+                GL.ActiveTexture(TextureUnit.Texture0 + textureUnit);
+                GL.BindTexture(TextureTarget.Texture2DArray, shadowMap2DHandle);
+                shader.SetUniform("shadowMap2D", textureUnit);
+                textureUnit++;
+            }
+
+            if (shadowMapCubeHandle != -1 && textureUnit < _maxTextureUnits && DoesUniformExist(shader, "shadowMapCube"))
+            {
+                GL.ActiveTexture(TextureUnit.Texture0 + textureUnit);
+                GL.BindTexture(TextureTarget.TextureCubeMapArray, shadowMapCubeHandle);
+                shader.SetUniform("shadowMapCube", textureUnit);
+                textureUnit++;
+            }
 
             SetSafeUniform(shader, "baseColor", material.BaseColor);
             SetSafeUniform(shader, "emissionColor", material.EmissionColor);

@@ -1,9 +1,10 @@
-﻿using OpenTK.Graphics.OpenGL4;
-using OpenTK.Mathematics;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using Gears.Utilities;
+using OpenTK.Graphics.OpenGL4;
+using OpenTK.Mathematics;
 
 namespace Gears.Graphics
 {
@@ -148,22 +149,22 @@ namespace Gears.Graphics
             if (resolvedVert != null && File.Exists(resolvedVert))
             {
                 string full = File.ReadAllText(resolvedVert);
-                vertexSource = ExtractShaderSection(full, ShaderType.VertexShader);
+                vertexSource = FilterToAscii(ExtractShaderSection(full, ShaderType.VertexShader), Path.GetFileName(resolvedVert));
             }
             if (resolvedFrag != null && File.Exists(resolvedFrag))
             {
                 string full = File.ReadAllText(resolvedFrag);
-                fragmentSource = ExtractShaderSection(full, ShaderType.FragmentShader);
+                fragmentSource = FilterToAscii(ExtractShaderSection(full, ShaderType.FragmentShader), Path.GetFileName(resolvedFrag));
             }
             if (resolvedGeom != null && File.Exists(resolvedGeom))
             {
                 string full = File.ReadAllText(resolvedGeom);
-                geometrySource = ExtractShaderSection(full, ShaderType.GeometryShader);
+                geometrySource = FilterToAscii(ExtractShaderSection(full, ShaderType.GeometryShader), Path.GetFileName(resolvedGeom));
             }
             if (resolvedComp != null && File.Exists(resolvedComp))
             {
                 string full = File.ReadAllText(resolvedComp);
-                computeSource = ExtractShaderSection(full, ShaderType.ComputeShader);
+                computeSource = FilterToAscii(ExtractShaderSection(full, ShaderType.ComputeShader), Path.GetFileName(resolvedComp));
             }
 
             return (vertexSource, fragmentSource, geometrySource, computeSource);
@@ -301,6 +302,57 @@ namespace Gears.Graphics
                 default:
                     Logger.Instance.LogError($"Unsupported uniform type: {value.GetType()}"); break;
             }
+        }
+
+        // ------------------------------------------------------------------
+        // Helper methods
+        // ------------------------------------------------------------------
+        private static string FilterToAscii(string input, string shaderName)
+        {
+            if (string.IsNullOrEmpty(input)) return input;
+
+            var sb = new StringBuilder(input.Length);
+            int stripped = 0;
+
+            List<int> Line = new();
+            List<int> Letter = new();
+
+            int lineCount = 0;
+            int letterCount = 0;
+
+            foreach (char c in input)
+            {
+                if (c == '\n')
+                {
+                    lineCount++;
+                    letterCount = 0;
+                }
+                else
+                {
+                    letterCount++;
+                }
+
+                if (c <= 127)
+                {
+                    sb.Append(c);
+                }
+                else
+                {
+                    sb.Append(' ');
+                    stripped++;
+
+                    Line.Add(lineCount + 1);
+                    Letter.Add(letterCount);
+                }
+            }
+
+            if (stripped > 0)
+            {
+                var positions = string.Join(", ", Line.Zip(Letter, (l, c) => $"({l},{c})"));
+                Logger.Instance.LogWarning($"Shader '{shaderName}' source contained {stripped} non-ASCII character(s) at positions: {positions}; replaced with spaces.");
+            }
+
+            return sb.ToString();
         }
     }
 }

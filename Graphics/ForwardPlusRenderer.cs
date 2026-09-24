@@ -8,8 +8,10 @@ namespace Gears.Graphics
 {
     /// <summary>
     /// GPU-side mirror of LightRenderData, laid out to match the `Light` struct declared in
-    /// LightCulling.shader and BaseFragment.shader (std430: every field is a vec4 to avoid the
-    /// alignment surprises vec3 causes in std430 layouts). If you change this, update both shaders.
+    /// LightCulling.shader and BaseFragment.shader (std430: every field is a vec4/mat4 to avoid
+    /// the alignment surprises vec3 causes in std430 layouts). If you change this, update both
+    /// shaders' Light struct to match byte-for-byte, even for fields the culling shader ignores —
+    /// culling still needs the correct array stride to index lights[] correctly.
     /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     public struct GPULight
@@ -18,15 +20,19 @@ namespace Gears.Graphics
         public Vector4 Color;      // rgb = color (intensity-premultiplied), w = intensity
         public Vector4 Direction;  // xyz = direction, w = type (0=Directional,1=Point,2=Spot,3=Area)
         public Vector4 Params;     // x = innerConeCos, y = outerConeCos, z = shadowStrength, w = renderingLayers
-        public Vector4 Size;       // xy = size (area lights), zw unused
+        public Vector4 Size;       // xy = size (area lights), z = shadow near plane, w = shadow far plane
+        public Vector4 ShadowA;    // x = shadowIndex (-1 = none), y = bias, z = normalBias, w = soft (0/1)
+        public Matrix4 LightSpaceMatrix; // directional/spot only; identity otherwise (point uses cube distance test, no matrix needed)
 
-        public GPULight(LightRenderData l)
+        public GPULight(LightRenderData l, ShadowAssignment shadow)
         {
             Position = new Vector4(l.Position, l.Range);
             Color = new Vector4(l.Color, l.Intensity);
             Direction = new Vector4(l.Direction, (float)l.Type);
             Params = new Vector4(l.InnerConeCos, l.OuterConeCos, l.ShadowStrength, (float)l.RenderingLayers);
-            Size = new Vector4(l.Size.X, l.Size.Y, 0f, 0f);
+            Size = new Vector4(l.Size.X, l.Size.Y, shadow.Near, shadow.Far);
+            ShadowA = new Vector4(shadow.ShadowIndex, l.ShadowBias, l.ShadowNormalBias, l.SoftShadows ? 1f : 0f);
+            LightSpaceMatrix = shadow.LightSpaceMatrix;
         }
     }
 
@@ -111,11 +117,11 @@ namespace Gears.Graphics
         /// the frame's draw calls to read from directly.
         /// </summary>
         public void Run(List<Game.RenderRequest> queue, Func<SubMesh, DrawMesh> getOrCreateDrawMesh,
-            IReadOnlyList<LightRenderData> lights, Matrix4 view, Matrix4 projection, Matrix4 invProjection,
-            float nearPlane, float farPlane)
+            IReadOnlyList<LightRenderData> lights, IReadOnlyList<ShadowAssignment> shadowAssignments,
+            Matrix4 view, Matrix4 projection, Matrix4 invProjection, float nearPlane, float farPlane)
         {
             RunDepthPrepass(queue, getOrCreateDrawMesh, view, projection);
-            UploadLights(lights);
+            UploadLights(lights, shadowAssignments);
             DispatchCulling(view, invProjection, lights.Count, nearPlane, farPlane);
         }
 
@@ -144,13 +150,16 @@ namespace Gears.Graphics
             GL.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
         }
 
-        private void UploadLights(IReadOnlyList<LightRenderData> lights)
+        private void UploadLights(IReadOnlyList<LightRenderData> lights, IReadOnlyList<ShadowAssignment> shadowAssignments)
         {
             int count = Math.Max(lights.Count, 1);
             if (_lightScratch.Length < count) _lightScratch = new GPULight[count];
 
             for (int i = 0; i < lights.Count; i++)
-                _lightScratch[i] = new GPULight(lights[i]);
+            {
+                ShadowAssignment shadow = (shadowAssignments != null && i < shadowAssignments.Count) ? shadowAssignments[i] : ShadowAssignment.None;
+                _lightScratch[i] = new GPULight(lights[i], shadow);
+            }
 
             _lightSSBO.SetData(_lightScratch);
         }

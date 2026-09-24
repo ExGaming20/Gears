@@ -68,7 +68,6 @@ namespace Gears.World.Components
         public float shadowBias = 0.005f;  // depth bias to avoid shadow acne
         public float shadowNormalBias = 0.02f;   // normal-offset bias
         public ShadowResolution shadowResolution = ShadowResolution.Medium;
-        public SoftShadowsQuality softShadowsQuality = SoftShadowsQuality.Medium;
 
         // -----------------------------------------------------------------------
         // Runtime helpers
@@ -196,18 +195,16 @@ namespace Gears.World.Components
         /// <summary>Shadow map resolution in texels.</summary>
         public enum ShadowResolution : int
         {
+            Toaster = 32,
+            Potato = 64,
+            ExtremelyLow = 128,
+            VeryLow = 256,
             Low = 512,
             Medium = 1024,
             High = 2048,
             VeryHigh = 4096,
-        }
-
-        public enum SoftShadowsQuality
-        {
-            Low,
-            Medium,
-            High,
-            VeryHigh
+            Ultra = 8192,
+            Epic = 16384
         }
     }
 

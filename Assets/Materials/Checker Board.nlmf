@@ -1,0 +1,55 @@
+﻿{
+  "Name": "Checker Board",
+  "ShaderName": "pbrShader",
+
+  "SeeThroughType": "Opaque",
+
+  "BaseColor": { "X": 1.0, "Y": 1.0, "Z": 1.0, "W": 1.0 },
+  "EmissionColor": { "X": 0.0, "Y": 0.0, "Z": 0.0, "W": 0.0 },
+
+  "CullMode": "CCW",
+
+  "Metallic": 0.0,
+  "Roughness": 0.0,
+
+  "ReceiveShadows": true,
+  "CastShadows": true,
+
+  "ZWrite": true,
+
+  "Textures": [
+    {
+      "TextureName": "checker_board_albedo",
+      "TextureScale": {"X": 1.0, "Y": 1.0},
+      "TextureOffset": {"X": 0.0, "Y": 0.0},
+
+      "TextureWarp": "Repeat",
+      "TextureFilter": "Linear",
+      "TexturePixel": "Rgba",
+      "TextureType": "Texture2D",
+      "TextureMipmap": "LinearMipmapLinear"
+    },
+    {
+      "TextureName": "checker_board_normal",
+      "TextureScale": { "X": 1.0, "Y": 1.0 },
+      "TextureOffset": { "X": 0.0, "Y": 0.0 },
+
+      "TextureWarp": "Repeat",
+      "TextureFilter": "Linear",
+      "TexturePixel": "Rgba",
+      "TextureType": "Texture2D",
+      "TextureMipmap": "LinearMipmapLinear"
+    },
+    {
+      "TextureName": "checker_board_roughness",
+      "TextureScale": { "X": 1.0, "Y": 1.0 },
+      "TextureOffset": { "X": 0.0, "Y": 0.0 },
+
+      "TextureWarp": "Repeat",
+      "TextureFilter": "Linear",
+      "TexturePixel": "Rgba",
+      "TextureType": "Texture2D",
+      "TextureMipmap": "LinearMipmapLinear"
+    }
+  ]
+}

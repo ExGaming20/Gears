@@ -1,4 +1,4 @@
-#version 430 core
+﻿#version 430 core
 
 #define TILE_SIZE 16
 #define MAX_LIGHTS_PER_TILE 256
@@ -7,11 +7,13 @@ layout(local_size_x = TILE_SIZE, local_size_y = TILE_SIZE, local_size_z = 1) in;
 
 struct Light
 {
-    vec4 position;   // xyz = world-space position, w = range
-    vec4 color;      // rgb = color (intensity-premultiplied), w = intensity
-    vec4 direction;  // xyz = direction, w = type (0=Directional,1=Point,2=Spot,3=Area)
-    vec4 params;     // x = innerConeCos, y = outerConeCos, z = shadowStrength, w = renderingLayers
-    vec4 size;       // xy = size (area lights), zw unused
+    vec4 position;
+    vec4 color;
+    vec4 direction;
+    vec4 params;
+    vec4 size;
+    vec4 shadowA;
+    mat4 lightSpaceMatrix;
 };
 
 layout(std430, binding = 0) readonly buffer LightBuffer
@@ -33,12 +35,11 @@ uniform int lightCount;
 uniform float nearPlane;
 uniform float farPlane;
 
-// Shared variables are implicitly coherent; memory qualifiers are not allowed on 'shared'.
 shared uint minDepthUint;
 shared uint maxDepthUint;
 shared int tileLightCount;
 shared int tileLightIndicesLocal[MAX_LIGHTS_PER_TILE];
-shared vec4 frustumPlanes[4]; // left, right, top, bottom - view space, normals point inward
+shared vec4 frustumPlanes[4];
 
 float LinearizeDepth(float depth)
 {
@@ -95,10 +96,10 @@ void main()
         vec2 tileMaxNDC = (vec2(tileID + ivec2(1)) * float(TILE_SIZE) / vec2(screenSize)) * 2.0 - 1.0;
 
         vec2 ndcCorners[4] = vec2[4](
-            vec2(tileMinNDC.x, tileMinNDC.y), // bottom-left
-            vec2(tileMaxNDC.x, tileMinNDC.y), // bottom-right
-            vec2(tileMaxNDC.x, tileMaxNDC.y), // top-right
-            vec2(tileMinNDC.x, tileMaxNDC.y)  // top-left
+            vec2(tileMinNDC.x, tileMinNDC.y),
+            vec2(tileMaxNDC.x, tileMinNDC.y),
+            vec2(tileMaxNDC.x, tileMaxNDC.y),
+            vec2(tileMinNDC.x, tileMaxNDC.y)
         );
 
         vec3 corners[4];
@@ -111,14 +112,9 @@ void main()
 
         vec3 origin = vec3(0.0);
 
-        // Fixed winding: normals now correctly point inward.
-        // Left plane:   edge (bottom-left -> top-left)   -> normal points right (+x)
         frustumPlanes[0] = ComputePlane(origin, corners[0], corners[3]);
-        // Right plane:  edge (top-right -> bottom-right) -> normal points left (-x)
         frustumPlanes[1] = ComputePlane(origin, corners[2], corners[1]);
-        // Top plane:    edge (top-left -> top-right)     -> normal points down (-y)
         frustumPlanes[2] = ComputePlane(origin, corners[3], corners[2]);
-        // Bottom plane: edge (bottom-right -> bottom-left) -> normal points up (+y)
         frustumPlanes[3] = ComputePlane(origin, corners[1], corners[0]);
     }
     barrier();
@@ -129,13 +125,6 @@ void main()
         int type = int(light.direction.w);
         bool visible = true;
 
-        // Directional lights hit every tile: keep, no test.
-        // Point/spot/area lights: sphere-vs-frustum-plane test (4 side planes)
-        // plus a view-space depth-slab test, using the light's range as the
-        // bounding-sphere radius. This is conservative (may keep a light a
-        // tile does not truly need) but never drops one it does need, and it
-        // keeps per-tile light counts low enough to stay under
-        // MAX_LIGHTS_PER_TILE.
         if (type != 0)
         {
             vec3 lightPosView = (view * vec4(light.position.xyz, 1.0)).xyz;

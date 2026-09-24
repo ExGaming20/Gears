@@ -29,9 +29,9 @@ namespace Gears.World
         public double FixedTimestep { get; set; } = 1.0 / 50.0;
         public double FixedProbeUpdatedTimestep { get; set; } = 1.0;
 
-        public GameObject? ActiveCamera { get; set; }
+        public static GameObject? ActiveCamera { get; set; }
 
-        public Texture SkyBox;
+        public static Texture? SkyBox;
 
         public Scene(string name = "Scene")
         {
@@ -55,7 +55,7 @@ namespace Gears.World
             _rootObjects.Clear();
             _pendingAdd.Clear();
             _pendingRemove.Clear();
-            SkyBox.Delete();
+            SkyBox?.Delete();
         }
 
         public void Tick(double deltaTime)
@@ -74,7 +74,11 @@ namespace Gears.World
                 {
                     if (obj.HasComponent<EProbe>())
                     {
-                        obj.GetComponent<EProbe>().UpdateProbe();
+                        var probe = obj.GetComponent<EProbe>();
+                        if (probe != null)
+                        {
+                            probe.UpdateProbe();
+                        }
                     }
                 }
 

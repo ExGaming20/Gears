@@ -25,6 +25,18 @@ namespace Gears
         /// <summary>Layer bitmask: which layers this light affects.</summary>
         public readonly int RenderingLayers;
 
+        // -----------------------------------------------------------------------
+        // Shadow settings — copied from Light at snapshot time. Which array slot
+        // (if any) this light actually gets is decided later, per frame, by
+        // ShadowMapRenderer, since that depends on every other light too.
+        // -----------------------------------------------------------------------
+        public readonly bool CastsShadows;
+        public readonly bool SoftShadows;
+        public readonly float ShadowBias;
+        public readonly float ShadowNormalBias;
+        public readonly float ShadowNearPlane;
+        public readonly int ShadowResolution;
+
         public LightRenderData(Light light)
         {
             var tf = light.Transform;
@@ -40,6 +52,13 @@ namespace Gears
             ShadowStrength = light.shadowStrength;
             Size = light.lightType == Light.LightType.Area ? light.widthHeight : (Vector2.One * light.radius); // for area lights: width and height (rectangle) or radius (disc)
             RenderingLayers = light.renderingLayers;  // now an int mask
+
+            CastsShadows = light.shadowType != Light.ShadowType.None;
+            SoftShadows = light.shadowType == Light.ShadowType.Soft;
+            ShadowBias = light.shadowBias;
+            ShadowNormalBias = light.shadowNormalBias;
+            ShadowNearPlane = light.shadowNearPlane;
+            ShadowResolution = (int)light.shadowResolution;
         }
     }
 

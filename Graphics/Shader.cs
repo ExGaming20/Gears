@@ -19,7 +19,8 @@ namespace Gears.Graphics
         {
             this.shader = Shader;
             this.Name = name;
-            UUID = _nextUUID++;
+            _nextUUID = Guid.NewGuid().GetHashCode();
+            UUID = _nextUUID;
             RefreshUniforms();
         }
 

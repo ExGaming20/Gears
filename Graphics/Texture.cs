@@ -55,7 +55,8 @@ namespace Gears.Graphics
                     if (Game.MissingTexture != null && Game.MissingTexture != this)
                     {
                         Handle = Game.MissingTexture.Handle;
-                        UUID = _nextUUID++;
+                        _nextUUID = Guid.NewGuid().GetHashCode();
+                        UUID = _nextUUID;
                         return;
                     }
                     Handle = -1;
@@ -103,7 +104,8 @@ namespace Gears.Graphics
             GL.GenerateMipmap((GenerateMipmapTarget)_target);
 
             Size = new Vector2i(image.Width, image.Height);
-            UUID = _nextUUID++;
+            _nextUUID = Guid.NewGuid().GetHashCode();
+            UUID = _nextUUID;
         }
 
         public Texture(string name, Vector2i size,
@@ -138,7 +140,8 @@ namespace Gears.Graphics
             GL.TexParameter(_target, TextureParameterName.TextureMagFilter, (int)_magFilter);
 
             Size = size;
-            UUID = _nextUUID++;
+            _nextUUID = Guid.NewGuid().GetHashCode();
+            UUID = _nextUUID;
         }
 
         /// <summary>
@@ -181,7 +184,8 @@ namespace Gears.Graphics
                 if (Game.MissingTexture != null && Game.MissingTexture != this)
                 {
                     Handle = Game.MissingTexture.Handle;
-                    UUID = _nextUUID++;
+                    _nextUUID = Guid.NewGuid().GetHashCode();
+                    UUID = _nextUUID;
                     return;
                 }
                 Handle = -1;
@@ -206,7 +210,8 @@ namespace Gears.Graphics
             GL.GenerateMipmap(GenerateMipmapTarget.Texture2D);
 
             Size = new Vector2i(image.Width, image.Height);
-            UUID = _nextUUID++;
+            _nextUUID = Guid.NewGuid().GetHashCode();
+            UUID = _nextUUID;
         }
 
         /// <summary>
@@ -241,7 +246,8 @@ namespace Gears.Graphics
 
             Handle = GL.GenTexture();
             Size = faceSize;
-            UUID = _nextUUID++;
+            _nextUUID = Guid.NewGuid().GetHashCode();
+            UUID = _nextUUID;
 
             if (_target == TextureTarget.TextureCubeMap)
             {

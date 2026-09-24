@@ -15,7 +15,8 @@ namespace Gears.Graphics
         {
             Name = name;
             SubMeshes = subMeshes ?? new List<SubMesh>();
-            UUID = _nextUUID++;
+            _nextUUID = Guid.NewGuid().GetHashCode();
+            UUID = _nextUUID;
         }
 
         public void Dispose()

@@ -25,7 +25,7 @@ namespace Gears.Graphics
 
         public _TextureData[] Textures { get; set; } = Array.Empty<_TextureData>();
 
-        private static int _nextUUID = 0;
+        private static int _nextUUID = Guid.NewGuid().GetHashCode();
 
         public Material()
         {
