@@ -3,25 +3,17 @@ using OpenTK.Mathematics;
 
 namespace Gears.World.Components
 {
-    public class Transform : BaseComponent
-    {
-        // -----------------------------------------------------------------------
-        // Raw TRS fields
-        // -----------------------------------------------------------------------
+public class Transform : BaseComponent
+{
+    private Vector3 _position = Vector3.Zero;
+    private Vector3 _localPosition = Vector3.Zero;
+    private Quaternion _rotation = Quaternion.Identity;
+    private Quaternion _localRotation = Quaternion.Identity;
+    private Vector3 _scale = Vector3.One;
+    private Vector3 _localScale = Vector3.One;
 
-        private Vector3 _position = Vector3.Zero;
-        private Vector3 _localPosition = Vector3.Zero;
-        private Quaternion _rotation = Quaternion.Identity;
-        private Quaternion _localRotation = Quaternion.Identity;
-        private Vector3 _scale = Vector3.One;
-        private Vector3 _localScale = Vector3.One;
-
-        private Matrix4 _localMatrix = Matrix4.Identity;
-        private bool _dirty = true;
-
-        // -----------------------------------------------------------------------
-        // Properties
-        // -----------------------------------------------------------------------
+    private Matrix4 _localMatrix = Matrix4.Identity;
+    private bool _dirty = true;
 
         public Vector3 Position
         {
@@ -136,18 +128,10 @@ namespace Gears.World.Components
             }
         }
 
-        // -----------------------------------------------------------------------
-        // Constructor
-        // -----------------------------------------------------------------------
-
         public Transform(GameObject gameObject)
         {
             GameObject = gameObject;
         }
-
-        // -----------------------------------------------------------------------
-        // Mutation helpers
-        // -----------------------------------------------------------------------
 
         public void Translate(Vector3 delta)
         {
@@ -238,10 +222,6 @@ namespace Gears.World.Components
             UpdateLocalRotationFromWorld();
             _dirty = true;
         }
-
-        // -----------------------------------------------------------------------
-        // Private
-        // -----------------------------------------------------------------------
 
         private void RebuildMatrix()
         {
@@ -340,10 +320,6 @@ namespace Gears.World.Components
                 _scale = _localScale * parent._scale;
             }
         }
-
-        // -----------------------------------------------------------------------
-        // Utility
-        // -----------------------------------------------------------------------
 
         public override string ToString()
         {

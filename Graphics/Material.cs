@@ -37,13 +37,13 @@ namespace Gears.Graphics
 
             SeeThroughType = _RenderType.Opaque;
 
-            BaseColor = Vector4.One;        // White, fully opaque
-            EmissionColor = Vector4.Zero;   // No emission
+            BaseColor = Vector4.One;
+            EmissionColor = Vector4.Zero;
 
             cullMode = _CullMode.CCW;
 
-            Metallic = 0.0f;                // Non-metallic by default
-            Roughness = 0.0f;               // Non-rough by default
+            Metallic = 0.0f;
+            Roughness = 0.0f;
 
             ReceiveShadows = true;
             CastShadows = true;

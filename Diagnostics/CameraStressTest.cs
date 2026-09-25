@@ -23,8 +23,6 @@ namespace Gears.Diagnostics
             public Pose(Vector3 p, Quaternion r) { Pos = p; Rot = r; }
         }
 
-        // Reproduces the exact camera poses (position + rotation quaternion) reported by the user as
-        // producing black tiles (logged via the "=" key: "P:... R:V: (x,y,z), W: w").
         private static readonly Pose[] Poses = new Pose[]
         {
             new Pose(new Vector3(-0.022879902f, -1.3409165f, -2.40286f),
@@ -65,11 +63,11 @@ namespace Gears.Diagnostics
                 new Quaternion(0.6942992f, -0.09772411f, 0.096033216f, 0.7065241f)),
         };
 
-        // Configuration read from the environment (kept out of Game.cs on purpose).
+        private const int Cadence = 12;
+        private const string Prefix = "cam_";
+
         public static readonly bool Enabled =
             string.Equals(Environment.GetEnvironmentVariable("GEARS_STRESS"), "1", StringComparison.OrdinalIgnoreCase);
-        private const int Cadence = 12;   // frames per pose (1 rendered + rest wait)
-        private const string Prefix = "cam_";
 
         private static int _poseIdx = -1;
         private static int _frame = 0;

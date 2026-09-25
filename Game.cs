@@ -39,9 +39,6 @@ namespace Gears
 
         public static List<RenderRequest> RenderQueue = new List<RenderRequest>();
 
-        // Separate queue used only while an EProbe is capturing (see BeginProbeCapture / RenderProbeFace).
-        // Keeping it distinct from RenderQueue means probe baking never depends on where the main
-        // per-frame queue happens to be in its populate/flush/clear cycle.
         private static readonly List<RenderRequest> ProbeCaptureQueue = new List<RenderRequest>();
         private static bool _capturingForProbe = false;
 
@@ -80,10 +77,6 @@ namespace Gears
             OriginalTitle = title;
         }
 
-        // -----------------------------------------------------------------------
-        // Lifecycle
-        // -----------------------------------------------------------------------
-
         protected override void OnLoad()
         {
             base.OnLoad();
@@ -103,13 +96,10 @@ namespace Gears
             GL.Enable(EnableCap.Blend);
             GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
 
-            // Register scenes with the manager before loading any of them. Only one scene exists
-            // right now, but this is the hook point for registering additional scenes (menus,
-            // other levels) later.
             SceneManager.Register(MainSceneName, () => new Scene(MainSceneName));
-            SceneManager.LoadScene(MainSceneName); // calls Scene.OnLoad() and sets it active
+            SceneManager.LoadScene(MainSceneName);
 
-            Scene activeScene = SceneManager.ActiveScene!; // guaranteed non-null immediately after LoadScene
+            Scene activeScene = SceneManager.ActiveScene!;
 
             Scene.SkyBox = new Texture("SkyBox", "CubeMap.png", TextureWrapMode.Repeat, TextureWrapMode.ClampToEdge);
 
@@ -132,16 +122,11 @@ namespace Gears
             _lightCullingShader = new Shader(new ShaderProgram(computePath: "LightCulling"), "LightCullingShader");
             _forwardPlus = new ForwardPlusRenderer(new Vector2i(Size.X, Size.Y), _depthPrepassShader, _lightCullingShader);
 
-            // Directional/spot shadows reuse the same position-only shader as the Forward+ depth
-            // pre-pass — depth-only, no fragment stage needed. Point light shadows need a real
-            // fragment shader since they write linear distance-to-light, not raw depth.
             _shadowDepthShader = new Shader(new ShaderProgram(vertexPath: "DepthPrepassVertex"), "ShadowDepthShader");
             _shadowCubeShader = new Shader(new ShaderProgram(vertexPath: "ShadowCubeVertex", fragmentPath: "ShadowCubeFragment"), "ShadowCubeShader");
             _shadowMapRenderer = new ShadowMapRenderer(_shadowDepthShader, _shadowCubeShader);
 
             LightManager.RebuildStaticData();
-
-            // test game objects
 
             var cameraObj = new GameObject(ActiveCameraName);
             activeScene.MakeGameObject(cameraObj);
@@ -272,15 +257,7 @@ namespace Gears
             float farPlane = mainCam?.FarClip ?? 1000f;
             Vector3 mainCamPos = mainCam?.Transform?.Position ?? Vector3.Zero;
 
-            // Shadow maps first: every shadow-casting light re-renders the opaque queue from its
-            // own point of view. Must run before Forward+'s culling upload, since the resulting
-            // per-light shadow index/matrix gets baked straight into the GPULight data it uploads.
             ShadowAssignment[] shadowAssignments = _shadowMapRenderer.Run(LightManager.AllData, RenderQueue, GetOrCreateDrawMesh, mainCamPos);
-
-            // Forward+: depth pre-pass + tile light culling for the main camera's view. Leaves the
-            // light SSBOs bound for every draw call below to read from directly (see
-            // ForwardPlusRenderer's scope note re: RenderTexture cameras / EProbe faces reusing
-            // this same result rather than getting their own culling pass).
             _forwardPlus.Run(RenderQueue, GetOrCreateDrawMesh, LightManager.AllData, shadowAssignments, view, projection, invProjection, nearPlane, farPlane);
 
             foreach (Camera cam in activeScene.FindAllComponents<Camera>())
@@ -384,13 +361,6 @@ namespace Gears
             SceneManager.ActiveScene?.OnResize(new Vector2i(e.Width, e.Height));
         }
 
-        // Keeps the color target and the Forward+ tile grid / depth pre-pass in lockstep with the
-        // actual GL drawable size (Size). OnResize can report the logical ClientSize (e.g.
-        // 1280x720) while the real drawable / framebuffer is larger (e.g. 1296x759, common under
-        // window-manager/DPI scaling). Sizing the tile grid from the client size leaves the right
-        // and bottom edges of the frame outside the allocated tile buffer, so those tile lookups
-        // read out of bounds and render black. Comparing against Size here every frame makes the
-        // whole Forward+ pipeline match the region gl_FragCoord actually spans.
         private void EnsureRenderTargetSize()
         {
             if (_frameBuffer == null || _forwardPlus == null) return;
@@ -444,9 +414,6 @@ namespace Gears
         protected override void OnMouseMove(MouseMoveEventArgs e) { base.OnMouseMove(e); SceneManager.ActiveScene?.OnMouseMove(e); }
         protected override void OnMouseWheel(MouseWheelEventArgs e) { base.OnMouseWheel(e); SceneManager.ActiveScene?.OnMouseWheel(e); }
 
-        // -----------------------------------------------------------------------
-        // Render queue
-        // -----------------------------------------------------------------------
         public static void AddRenderRequest(SubMesh subMesh, Matrix4 modelMatrix, int sortLayer = 0, Layer objectLayer = Layer.Default, Material? materialOverride = null)
         {
             var req = new RenderRequest(subMesh, modelMatrix, sortLayer, objectLayer, materialOverride);
@@ -493,9 +460,6 @@ namespace Gears
             {
                 SubMesh subMesh = req.subMesh;
 
-                // The queue is sorted by ShaderUUID (within layer/transparency groups), so
-                // consecutive requests usually share a shader — only re-resolve it when the UUID
-                // actually changes instead of doing a dictionary lookup every single request.
                 if (!haveShader || req.material.ShaderUUID != currentShaderUUID)
                 {
                     if (!_shaderByUUID.TryGetValue(req.material.ShaderUUID, out currentShader))
@@ -542,8 +506,6 @@ namespace Gears
 
                 GL.DepthMask(req.material.ZWrite);
 
-                // Tile grid width for the fragment shader's tileLights lookup (Forward+). Cheap
-                // enough to set every draw; only actually changes on resize.
                 if (shader.UniformNameSet.Contains("tileCountXF"))
                     shader.SetUniform("tileCountXF", (float)_forwardPlus.TileCountX);
 
@@ -560,10 +522,6 @@ namespace Gears
                 );
             }
         }
-
-        // -----------------------------------------------------------------------
-        // RenderRequest
-        // -----------------------------------------------------------------------
 
         public struct RenderRequest
         {
@@ -593,10 +551,6 @@ namespace Gears
                 this.Transparent = material.SeeThroughType != Material._RenderType.Opaque;
             }
         }
-
-        // -----------------------------------------------------------------------
-        // Probe capture
-        // -----------------------------------------------------------------------
 
         /// <summary>
         /// Re-traverses the scene (same as a normal render pass) with AddRenderRequest routed into

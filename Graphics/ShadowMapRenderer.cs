@@ -80,9 +80,6 @@ namespace Gears.Graphics
             _shadowCubeShader = shadowCubeShader;
         }
 
-        // Algorithm: shadow map slot assignment — picks up to MaxShadowMaps2D directional/spot
-        // casters and MaxShadowMapsCube point casters, then renders each into its own array
-        // slot from the light's point of view (standard shadow mapping).
         public ShadowAssignment[] Run(IReadOnlyList<LightRenderData> lights, List<Game.RenderRequest> queue,
             Func<SubMesh, DrawMesh> getOrCreateDrawMesh, Vector3 directionalAnchor)
         {
@@ -163,7 +160,7 @@ namespace Gears.Graphics
                     _assignmentScratch[i] = new ShadowAssignment
                     {
                         ShadowIndex = index2D,
-                        LightSpaceMatrix = view * proj, // view applied first, then proj — matches this codebase's model*view*projection convention
+                        LightSpaceMatrix = view * proj,
                         Near = near,
                         Far = far
                     };
@@ -175,9 +172,6 @@ namespace Gears.Graphics
             return _assignmentScratch;
         }
 
-        // Algorithm: camera-centered fixed-radius orthographic directional shadow frustum. Not a
-        // real fitted/cascaded frustum — just a box of fixed size following the camera. Good
-        // enough for one directional light over a small-to-medium scene.
         private void BuildDirectionalViewProj(LightRenderData l, Vector3 anchor, out Matrix4 view, out Matrix4 proj, out float near, out float far)
         {
             Vector3 dir = l.Direction.LengthSquared > 1e-6f ? Vector3.Normalize(l.Direction) : -Vector3.UnitY;

@@ -7,10 +7,6 @@ using OpenTK.Windowing.Common;
 
 public class GameObject
 {
-    // -----------------------------------------------------------------------
-    // Identity
-    // -----------------------------------------------------------------------
-
     public string Name { get; set; }
     public string Tag { get; set; } = "Untagged";
 
@@ -26,30 +22,14 @@ public class GameObject
     public bool IsActive { get; private set; } = true;
     public bool IsDestroyed { get; private set; } = false;
 
-    // -----------------------------------------------------------------------
-    // Transform (always present)
-    // -----------------------------------------------------------------------
-
     public Transform Transform { get; private set; }
-
-    // -----------------------------------------------------------------------
-    // Hierarchy
-    // -----------------------------------------------------------------------
 
     public GameObject? Parent { get; private set; }
 
     private readonly List<GameObject> _children = new();
     public IReadOnlyList<GameObject> Children => _children.AsReadOnly();
 
-    // -----------------------------------------------------------------------
-    // Components
-    // -----------------------------------------------------------------------
-
     private readonly List<BaseComponent> _components = new();
-
-    // -----------------------------------------------------------------------
-    // Constructor
-    // -----------------------------------------------------------------------
 
     public GameObject(string name = "GameObject")
     {
@@ -98,10 +78,6 @@ public class GameObject
                 c.OnDisable();
         }
     }
-
-    // -----------------------------------------------------------------------
-    // Lifecycle
-    // -----------------------------------------------------------------------
 
     public void Update()
     {
@@ -187,10 +163,6 @@ public class GameObject
         foreach (var child in _children) child.OnMouseWheel(e);
     }
 
-    // -----------------------------------------------------------------------
-    // Collision & Trigger
-    // -----------------------------------------------------------------------
-
     public void OnCollisionEnter(object collision) { foreach (var c in _components) c.OnCollisionEnter(collision); }
     public void OnCollisionStay(object collision) { foreach (var c in _components) c.OnCollisionStay(collision); }
     public void OnCollisionExit(object collision) { foreach (var c in _components) c.OnCollisionExit(collision); }
@@ -213,10 +185,6 @@ public class GameObject
         foreach (var c in _components) c.OnApplicationQuit();
         foreach (var child in _children) child.OnApplicationQuit();
     }
-
-    // -----------------------------------------------------------------------
-    // Components
-    // -----------------------------------------------------------------------
 
     public T AddComponent<T>() where T : BaseComponent, new()
     {
@@ -283,10 +251,6 @@ public class GameObject
         return true;
     }
 
-    // -----------------------------------------------------------------------
-    // Hierarchy
-    // -----------------------------------------------------------------------
-
     public void SetParent(GameObject? newParent)
     {
         if (IsDestroyed) return;
@@ -325,10 +289,6 @@ public class GameObject
         return _children;
     }
 
-    // -----------------------------------------------------------------------
-    // Destruction
-    // -----------------------------------------------------------------------
-
     public void Destroy()
     {
         if (IsDestroyed) return;
@@ -351,10 +311,6 @@ public class GameObject
         Parent?._children.Remove(this);
         Parent = null;
     }
-
-    // -----------------------------------------------------------------------
-    // Static search helpers
-    // -----------------------------------------------------------------------
 
     public static GameObject? Find(string name, GameObject root)
     {
@@ -386,10 +342,6 @@ public class GameObject
         }
         return null;
     }
-
-    // -----------------------------------------------------------------------
-    // Utility
-    // -----------------------------------------------------------------------
 
     public override string ToString()
     {

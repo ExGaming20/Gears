@@ -5,10 +5,6 @@ namespace Gears.World.Components
 {
     public class Light : BaseComponent
     {
-        // -----------------------------------------------------------------------
-        // General
-        // -----------------------------------------------------------------------
-
         public LightType lightType = LightType.Point;
 
         /// <summary>
@@ -23,55 +19,32 @@ namespace Gears.World.Components
         /// </summary>
         public int renderingLayers = LayerMask.Everything;
 
-        // -----------------------------------------------------------------------
-        // Spot only
-        // -----------------------------------------------------------------------
-
-        public float innerConeAngle = 35f; // degrees — soft inner edge
-        public float outerConeAngle = 45f; // degrees — hard outer edge
-
-        // -----------------------------------------------------------------------
-        // Area only
-        // -----------------------------------------------------------------------
+        public float innerConeAngle = 35f;
+        public float outerConeAngle = 45f;
 
         public Shape shape = Shape.Rectangle;
-        public Vector2 widthHeight = Vector2.One; // rectangle extents in world units
-        public float radius = 1f;                 // disc radius in world units
-
-        // -----------------------------------------------------------------------
-        // Emission
-        // -----------------------------------------------------------------------
+        public Vector2 widthHeight = Vector2.One;
+        public float radius = 1f;
 
         public EmissionType emissionType = EmissionType.Color;
         public Color4 color = Color4.White;
-        public float temperature = 4000f; // Kelvin — used when emissionType = Temperature
+        public float temperature = 4000f;
         public float intensity = 0.75f;
-        public float range = 10f;         // attenuation radius (Point / Spot)
-
-        // -----------------------------------------------------------------------
-        // Cookie (gobo — a texture multiplied over the light output)
-        // -----------------------------------------------------------------------
+        public float range = 10f;
 
         /// <summary>UUID of the cookie texture. -1 means no cookie.</summary>
         public int cookieTextureUUID = -1;
         public Vector2 cookieScale = Vector2.One;
         public Vector2 cookieOffset = Vector2.Zero;
 
-        // -----------------------------------------------------------------------
-        // Shadow
-        // -----------------------------------------------------------------------
-
         public ShadowType shadowType = ShadowType.Hard;
         /// <summary>Shadow darkness from 0 (invisible) to 1 (fully opaque).</summary>
         public float shadowStrength = 1f;
         public float shadowNearPlane = 0.1f;
-        public float shadowBias = 0.005f;  // depth bias to avoid shadow acne
-        public float shadowNormalBias = 0.02f;   // normal-offset bias
+        public float shadowBias = 0.005f;
+        public float shadowNormalBias = 0.02f;
         public ShadowResolution shadowResolution = ShadowResolution.Medium;
 
-        // -----------------------------------------------------------------------
-        // Runtime helpers
-        // -----------------------------------------------------------------------
         public Vector3 GetLinearColorRGB()
         {
             Vector4 col = emissionType == EmissionType.Color
@@ -109,10 +82,6 @@ namespace Gears.World.Components
             LightManager.Unregister(this);
         }
 
-        // -----------------------------------------------------------------------
-        // Blackbody approximation  (Kelvin → linear RGB)
-        // Tanner Helland algorithm — valid from ~1000 K to ~12 000 K
-        // -----------------------------------------------------------------------
         public static Vector4 TemperatureToColor(float kelvin)
         {
             float t = Math.Clamp(kelvin, 1000f, 12000f) / 100f;
@@ -153,10 +122,6 @@ namespace Gears.World.Components
 
             return new Vector4(r, g, b, 1f);
         }
-
-        // -----------------------------------------------------------------------
-        // Enums
-        // -----------------------------------------------------------------------
 
         public enum LightType : int
         {
@@ -218,16 +183,16 @@ namespace Gears.World.Components
 
     public struct LightShaderData
     {
-        public int type; // 0=Directional, 1=Point, 2=Spot, 3=Area
+        public int type;
         public Vector3 color;
-        public Vector2 size; // for area lights: width and height (rectangle) or radius (disc)
+        public Vector2 size;
         public float intensity;
         public Vector3 position;
         public float range;
         public Vector3 direction;
         public float innerConeCos;
         public float outerConeCos;
-        public int shadowType; // 0=None, 1=Hard, 2=Soft
+        public int shadowType;
         public float shadowStrength;
         public float shadowBias;
 
@@ -251,16 +216,16 @@ namespace Gears.World.Components
         {
             type = (int)lightData.Type;
             color = lightData.Color;
-            size = Vector2.Zero; // LightRenderData doesn't contain size information
+            size = Vector2.Zero;
             intensity = lightData.Intensity;
             position = lightData.Position;
             range = lightData.Range;
             direction = lightData.Direction;
             innerConeCos = lightData.InnerConeCos;
             outerConeCos = lightData.OuterConeCos;
-            shadowType = 0; // LightRenderData doesn't contain shadowType
+            shadowType = 0;
             shadowStrength = lightData.ShadowStrength;
-            shadowBias = 0f; // LightRenderData doesn't contain shadowBias
+            shadowBias = 0f;
         }
     }
 }

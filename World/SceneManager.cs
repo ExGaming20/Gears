@@ -3,10 +3,6 @@ using System.Collections.Generic;
 
 namespace Gears.World
 {
-    /// <summary>
-    /// Registers Scene factories by name and controls which Scene(s) are currently loaded/active.
-    /// Mirrors Unity's SceneManager: a single active scene, with optional additive loading of more.
-    /// </summary>
     public static class SceneManager
     {
         private static readonly Dictionary<string, Func<Scene>> _registry = new();
@@ -19,10 +15,6 @@ namespace Gears.World
         public static event Action<Scene>? SceneUnloaded;
         public static event Action<Scene?, Scene?>? ActiveSceneChanged;
 
-        // -----------------------------------------------------------------------
-        // Registration
-        // -----------------------------------------------------------------------
-
         public static void Register(string name, Func<Scene> factory)
         {
             if (string.IsNullOrEmpty(name)) throw new ArgumentException("Scene name cannot be empty.", nameof(name));
@@ -32,10 +24,6 @@ namespace Gears.World
         public static void Unregister(string name) => _registry.Remove(name);
 
         public static bool IsRegistered(string name) => _registry.ContainsKey(name);
-
-        // -----------------------------------------------------------------------
-        // Loading
-        // -----------------------------------------------------------------------
 
         /// <summary>
         /// Loads the scene registered under <paramref name="name"/> and makes it active.
@@ -84,10 +72,6 @@ namespace Gears.World
                 UnloadScene(_loaded[i]);
         }
 
-        // -----------------------------------------------------------------------
-        // Active scene
-        // -----------------------------------------------------------------------
-
         public static void SetActiveScene(Scene? scene)
         {
             if (scene != null && !_loaded.Contains(scene))
@@ -99,10 +83,6 @@ namespace Gears.World
             ActiveScene = scene;
             ActiveSceneChanged?.Invoke(previous, scene);
         }
-
-        // -----------------------------------------------------------------------
-        // Queries
-        // -----------------------------------------------------------------------
 
         public static Scene? FindLoadedScene(string name)
         {

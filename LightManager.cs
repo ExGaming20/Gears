@@ -25,11 +25,6 @@ namespace Gears
         /// <summary>Layer bitmask: which layers this light affects.</summary>
         public readonly int RenderingLayers;
 
-        // -----------------------------------------------------------------------
-        // Shadow settings — copied from Light at snapshot time. Which array slot
-        // (if any) this light actually gets is decided later, per frame, by
-        // ShadowMapRenderer, since that depends on every other light too.
-        // -----------------------------------------------------------------------
         public readonly bool CastsShadows;
         public readonly bool SoftShadows;
         public readonly float ShadowBias;
@@ -50,8 +45,8 @@ namespace Gears
             InnerConeCos = MathF.Cos(MathHelper.DegreesToRadians(light.innerConeAngle * 0.5f));
             OuterConeCos = MathF.Cos(MathHelper.DegreesToRadians(light.outerConeAngle * 0.5f));
             ShadowStrength = light.shadowStrength;
-            Size = light.lightType == Light.LightType.Area ? light.widthHeight : (Vector2.One * light.radius); // for area lights: width and height (rectangle) or radius (disc)
-            RenderingLayers = light.renderingLayers;  // now an int mask
+            Size = light.lightType == Light.LightType.Area ? light.widthHeight : (Vector2.One * light.radius);
+            RenderingLayers = light.renderingLayers;
 
             CastsShadows = light.shadowType != Light.ShadowType.None;
             SoftShadows = light.shadowType == Light.ShadowType.Soft;
@@ -84,10 +79,8 @@ namespace Gears
             }
         }
 
-        // Simple black-body temperature to RGB (linear)
         private static Vector3 ColorTemperatureToRgb(float kelvin)
         {
-            // Approximate conversion – you can use a more accurate function
             float temp = kelvin / 100.0f;
             float r, g, b;
             if (temp <= 66.0f)
@@ -105,7 +98,6 @@ namespace Gears
                 g = 288.1221695283f * MathF.Pow(temp - 60.0f, -0.0755148492f);
                 b = 255.0f;
             }
-            // Clamp and convert to linear (assuming sRGB input)
             return new Vector3(
                 MathHelper.Clamp(r / 255.0f, 0.0f, 1.0f),
                 MathHelper.Clamp(g / 255.0f, 0.0f, 1.0f),

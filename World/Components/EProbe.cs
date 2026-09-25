@@ -94,7 +94,6 @@ namespace Gears.World.Components
                 GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
                 GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, colorTex, 0);
 
-                // Depth as a sampleable texture (not a renderbuffer) so we can read distances back for the octahedral distance map.
                 int depthTex = GL.GenTexture();
                 GL.BindTexture(TextureTarget.Texture2D, depthTex);
                 GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.DepthComponent32f, resolution, resolution, 0, PixelFormat.DepthComponent, PixelType.Float, IntPtr.Zero);
@@ -138,11 +137,6 @@ namespace Gears.World.Components
             }
 
             Vector3 pos = GameObject.Transform.Position;
-
-            // Populate a dedicated probe render queue (separate from the per-frame Game.RenderQueue,
-            // which is only valid between Scene.Render() and its Clear() at the end of OnRenderFrame,
-            // and would otherwise be empty by the time Tick() runs the probe accumulator). Geometry
-            // doesn't change between the 6 faces, so this is built once and reused for all of them.
             Game.BeginProbeCapture();
 
             byte[][] faceColor = new byte[6][];

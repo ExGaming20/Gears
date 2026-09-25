@@ -42,9 +42,7 @@ namespace Gears.Graphics
             _programID = CreateAndLinkProgram(vertexSource, fragmentSource, geometrySource, computeSource);
         }
 
-        // ------------------------------------------------------------------
         // Public Reload method
-        // ------------------------------------------------------------------
         public void Reload()
         {
             // Reload sources using the stored original paths
@@ -69,11 +67,9 @@ namespace Gears.Graphics
             {
                 Logger.Instance.LogError("Reload failed – old shader program kept.");
             }
-        }
+}
 
-        // ------------------------------------------------------------------
-        // Core program creation (shared by constructor and Reload)
-        // ------------------------------------------------------------------
+// Core program creation (shared by constructor and Reload)
         private int CreateAndLinkProgram(string? vertexSource, string? fragmentSource,
                                          string? geometrySource, string? computeSource)
         {
@@ -130,9 +126,6 @@ namespace Gears.Graphics
             return program;
         }
 
-        // ------------------------------------------------------------------
-        // Source loading with path resolution and section extraction
-        // ------------------------------------------------------------------
         private (string? vertex, string? fragment, string? geometry, string? compute)
             LoadShaderSources(string? vertexPath, string? fragmentPath,
                               string? geometryPath, string? computePath,
@@ -188,10 +181,6 @@ namespace Gears.Graphics
             return File.Exists(path) ? path : null;
         }
 
-        // ------------------------------------------------------------------
-        // Original shader compilation and section extraction (unchanged except
-        // the CompileShader method's logging is kept identical)
-        // ------------------------------------------------------------------
         private int CompileShader(ShaderType type, string source)
         {
             int shader = GL.CreateShader(type);
@@ -266,9 +255,6 @@ namespace Gears.Graphics
             return string.Join("\n", finalLines).Trim();
         }
 
-        // ------------------------------------------------------------------
-        // Existing public methods (unchanged except using _programID field)
-        // ------------------------------------------------------------------
         public void UseProgram() => GL.UseProgram(_programID);
 
         public void DeleteProgram() => GL.DeleteProgram(_programID);
@@ -304,9 +290,6 @@ namespace Gears.Graphics
             }
         }
 
-        // ------------------------------------------------------------------
-        // Helper methods
-        // ------------------------------------------------------------------
         private static string FilterToAscii(string input, string shaderName)
         {
             if (string.IsNullOrEmpty(input)) return input;
