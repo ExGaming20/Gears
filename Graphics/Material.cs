@@ -68,6 +68,7 @@ namespace Gears.Graphics
         {
             public int TextureUUID { get; set; }
             public string TextureName { get; set; }
+            public string SemanticName { get; set; }
 
             public Vector2 TextureScale { get; set; }
             public Vector2 TextureOffset { get; set; }

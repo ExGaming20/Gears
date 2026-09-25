@@ -1,0 +1,12 @@
+﻿{
+  "Name": "ULitShaderURP",
+
+  "DrawableShader": true,
+
+  "SubShaders": [
+    {
+      "Vertex": "BaseVertex",
+      "Fragment": "ULitFragment"
+    }
+  ]
+}

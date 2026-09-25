@@ -29,7 +29,9 @@ namespace Gears.World
         public double FixedTimestep { get; set; } = 1.0 / 50.0;
         public double FixedProbeUpdatedTimestep { get; set; } = 1.0;
 
-        public static GameObject? ActiveCamera { get; set; }
+        public Camera? MainCamera { get; private set; }
+
+        public void SetMainCamera(Camera camera) => MainCamera = camera;
 
         public static Texture? SkyBox;
 

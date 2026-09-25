@@ -1,6 +1,6 @@
 ﻿{
   "Name": "Checker Board",
-  "ShaderName": "pbrShader",
+  "ShaderName": "LitShaderURP",
 
   "SeeThroughType": "Opaque",
 
@@ -20,6 +20,7 @@
   "Textures": [
     {
       "TextureName": "checker_board_albedo",
+      "SemanticName": "albedo",
       "TextureScale": {"X": 1.0, "Y": 1.0},
       "TextureOffset": {"X": 0.0, "Y": 0.0},
 
@@ -31,6 +32,7 @@
     },
     {
       "TextureName": "checker_board_normal",
+      "SemanticName": "normal",
       "TextureScale": { "X": 1.0, "Y": 1.0 },
       "TextureOffset": { "X": 0.0, "Y": 0.0 },
 
@@ -42,6 +44,7 @@
     },
     {
       "TextureName": "checker_board_roughness",
+      "SemanticName": "roughness",
       "TextureScale": { "X": 1.0, "Y": 1.0 },
       "TextureOffset": { "X": 0.0, "Y": 0.0 },
 

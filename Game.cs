@@ -35,11 +35,6 @@ namespace Gears
 
         private readonly Dictionary<SubMesh, DrawMesh> _meshCache = new();
 
-        // Scenes are owned by SceneManager now; this is just a convenience accessor so the rest
-        // of Game.cs reads the same as before. Never cache the result across frames — the active
-        // scene can change (SceneManager.LoadScene) between one call site and the next.
-        private static Scene? ActiveScene => SceneManager.ActiveScene;
-
         public const string MainSceneName = "MainScene";
 
         public static List<RenderRequest> RenderQueue = new List<RenderRequest>();
@@ -114,7 +109,7 @@ namespace Gears
             SceneManager.Register(MainSceneName, () => new Scene(MainSceneName));
             SceneManager.LoadScene(MainSceneName); // calls Scene.OnLoad() and sets it active
 
-            Scene activeScene = ActiveScene!; // guaranteed non-null immediately after LoadScene
+            Scene activeScene = SceneManager.ActiveScene!; // guaranteed non-null immediately after LoadScene
 
             Scene.SkyBox = new Texture("SkyBox", "CubeMap.png", TextureWrapMode.Repeat, TextureWrapMode.ClampToEdge);
 
@@ -150,7 +145,8 @@ namespace Gears
 
             var cameraObj = new GameObject(ActiveCameraName);
             activeScene.MakeGameObject(cameraObj);
-            cameraObj.AddComponent<Camera>();
+            var camera = cameraObj.AddComponent<Camera>();
+            activeScene.SetMainCamera(camera);
             cameraObj.AddComponent<BasicCameraFlyScript>();
 
             var cubeObj = new GameObject("cube");
@@ -175,13 +171,16 @@ namespace Gears
             activeScene.MakeGameObject(lightObj1);
             lightObj1.AddComponent<Light>();
 
-            var lightObj2 = new GameObject("light2");
+            var lightObj2 = new GameObject("Sun");
             activeScene.MakeGameObject(lightObj2);
             lightObj2.AddComponent<Light>();
 
             var UltraCube_mesh = FindLoadedAssets.FindMesh("UltraCube");
             var Plane_mesh = FindLoadedAssets.FindMesh("Plane");
             var Cube_mesh = FindLoadedAssets.FindMesh("Cube");
+            var Arrow_mesh = FindLoadedAssets.FindMesh("Arrow");
+
+            var EProbe_material = FindLoadedAssets.FindMaterial("EProbe");
 
             if (UltraCube_mesh != null)
             {
@@ -206,23 +205,18 @@ namespace Gears
 
             lightObj1.GetComponent<Light>().lightType = Light.LightType.Point;
             lightObj1.GetComponent<Transform>().Position = new Vector3(-5, 10, 0);
-            lightObj1.GetComponent<Light>().range = 20f;
-            lightObj1.GetComponent<Light>().intensity = 5f;
-            lightObj1.GetComponent<Light>().color = new Color4(1f, 1f, 1f, 1f);
-
-            lightObj2.GetComponent<Light>().lightType = Light.LightType.Spot;
-            lightObj2.GetComponent<Transform>().Position = new Vector3(10, 0, 0);
-            lightObj2.GetComponent<Light>().range = 20f;
-            lightObj2.GetComponent<Light>().intensity = 5f;
-            lightObj2.GetComponent<Light>().color = new Color4(1f, 0.5f, 1f, 1f);
+            lightObj1.GetComponent<Light>().range = 50f;
+            lightObj1.GetComponent<Light>().intensity = 50f;
+            lightObj1.GetComponent<Light>().color = new Color4(0f, 1f, 0f, 1f);
+            lightObj1.GetComponent<Light>().shadowResolution = Light.ShadowResolution.Medium;
 
             lightObj2.GetComponent<Light>().lightType = Light.LightType.Directional;
             lightObj2.GetComponent<Light>().shadowType = Light.ShadowType.Soft;
             lightObj2.GetComponent<Transform>().Position = new Vector3(10, 0, 0);
-            lightObj2.GetComponent<Transform>().EulerAngles = new Vector3(-60, 35, 0);
-            lightObj2.GetComponent<Light>().intensity = 1f;
-            lightObj2.GetComponent<Light>().color = new Color4(1f, 1f, 1f, 1f);
-            lightObj2.GetComponent<Light>().shadowResolution = Light.ShadowResolution.VeryHigh;
+            lightObj2.GetComponent<Transform>().EulerAngles = new Vector3(-90, 0, 0);
+            lightObj2.GetComponent<Light>().intensity = 0.5f;
+            lightObj2.GetComponent<Light>().color = new Color4(1f, 0f, 0f, 1f);
+            lightObj2.GetComponent<Light>().shadowResolution = Light.ShadowResolution.Medium;
 
             var planeObj = new GameObject("plane");
             activeScene.MakeGameObject(planeObj);
@@ -246,7 +240,7 @@ namespace Gears
             Eprob.AddComponent<EProbe>();
             Eprob.GetComponent<EProbe>().Far = 25f;
             Eprob.GetComponent<EProbe>().Near = 0.1f;
-            Eprob.GetComponent<EProbe>().Resolution = 512;
+            Eprob.GetComponent<EProbe>().Resolution = 128;
             Eprob.Transform.Position = new Vector3(0, -2.5f, 0);
         }
 
@@ -256,15 +250,15 @@ namespace Gears
 
             EnsureRenderTargetSize();
 
-            Scene? activeScene = ActiveScene;
+            Scene? activeScene = SceneManager.ActiveScene;
             if (activeScene == null)
             {
                 SwapBuffers();
                 return;
             }
 
-            GameObject? camObj = activeScene.Find(ActiveCameraName);
-            Camera? mainCam = camObj?.GetComponent<Camera>();
+            Camera? mainCam = activeScene.MainCamera;
+            GameObject? camObj = mainCam?.GameObject;
 
             bool stressCaptureFrame = CameraStressTest.Enabled && CameraStressTest.Advance(camObj);
 
@@ -336,7 +330,7 @@ namespace Gears
 
             DeltaTime = (float)args.Time;
 
-            ActiveScene?.Tick(args.Time);
+            SceneManager.ActiveScene?.Tick(args.Time);
 
             LightManager.UpdateDynamicData();
 
@@ -369,9 +363,9 @@ namespace Gears
 
             if (KeyboardState.IsKeyPressed(Keys.Equal))
             {
-                var camObj = ActiveScene?.Find(ActiveCameraName)?.Transform;
-                if (camObj != null)
-                    Logger.Instance.Log($"P:{camObj.Position} R:{camObj.Rotation}");
+                var camTransform = SceneManager.ActiveScene?.MainCamera?.Transform;
+                if (camTransform != null)
+                    Logger.Instance.Log($"P:{camTransform.Position} R:{camTransform.Rotation}");
             }
         }
 
@@ -387,7 +381,7 @@ namespace Gears
             _frameBuffer?.Resize(new Vector2i(e.Width, e.Height));
             _forwardPlus?.Resize(new Vector2i(e.Width, e.Height));
 
-            ActiveScene?.OnResize(new Vector2i(e.Width, e.Height));
+            SceneManager.ActiveScene?.OnResize(new Vector2i(e.Width, e.Height));
         }
 
         // Keeps the color target and the Forward+ tile grid / depth pre-pass in lockstep with the
@@ -443,19 +437,19 @@ namespace Gears
             Logger.Instance.PrintLogs();
         }
 
-        protected override void OnKeyDown(KeyboardKeyEventArgs e) { base.OnKeyDown(e); ActiveScene?.OnKeyDown(e); }
-        protected override void OnKeyUp(KeyboardKeyEventArgs e) { base.OnKeyUp(e); ActiveScene?.OnKeyUp(e); }
-        protected override void OnMouseDown(MouseButtonEventArgs e) { base.OnMouseDown(e); ActiveScene?.OnMouseDown(e); }
-        protected override void OnMouseUp(MouseButtonEventArgs e) { base.OnMouseUp(e); ActiveScene?.OnMouseUp(e); }
-        protected override void OnMouseMove(MouseMoveEventArgs e) { base.OnMouseMove(e); ActiveScene?.OnMouseMove(e); }
-        protected override void OnMouseWheel(MouseWheelEventArgs e) { base.OnMouseWheel(e); ActiveScene?.OnMouseWheel(e); }
+        protected override void OnKeyDown(KeyboardKeyEventArgs e) { base.OnKeyDown(e); SceneManager.ActiveScene?.OnKeyDown(e); }
+        protected override void OnKeyUp(KeyboardKeyEventArgs e) { base.OnKeyUp(e); SceneManager.ActiveScene?.OnKeyUp(e); }
+        protected override void OnMouseDown(MouseButtonEventArgs e) { base.OnMouseDown(e); SceneManager.ActiveScene?.OnMouseDown(e); }
+        protected override void OnMouseUp(MouseButtonEventArgs e) { base.OnMouseUp(e); SceneManager.ActiveScene?.OnMouseUp(e); }
+        protected override void OnMouseMove(MouseMoveEventArgs e) { base.OnMouseMove(e); SceneManager.ActiveScene?.OnMouseMove(e); }
+        protected override void OnMouseWheel(MouseWheelEventArgs e) { base.OnMouseWheel(e); SceneManager.ActiveScene?.OnMouseWheel(e); }
 
         // -----------------------------------------------------------------------
         // Render queue
         // -----------------------------------------------------------------------
-        public static void AddRenderRequest(SubMesh subMesh, Matrix4 modelMatrix, int sortLayer = 0, Layer objectLayer = Layer.Default)
+        public static void AddRenderRequest(SubMesh subMesh, Matrix4 modelMatrix, int sortLayer = 0, Layer objectLayer = Layer.Default, Material? materialOverride = null)
         {
-            var req = new RenderRequest(subMesh, modelMatrix, sortLayer, objectLayer);
+            var req = new RenderRequest(subMesh, modelMatrix, sortLayer, objectLayer, materialOverride);
 
             if (_capturingForProbe)
                 ProbeCaptureQueue.Add(req);
@@ -489,7 +483,7 @@ namespace Gears
         private void FlushRenderQueue(Matrix4 view, Matrix4 projection, List<RenderRequest>? queueOverride = null)
         {
             var queue = queueOverride ?? RenderQueue;
-            double totalTime = ActiveScene?.TotalTime ?? 0.0;
+            double totalTime = SceneManager.ActiveScene?.TotalTime ?? 0.0;
 
             int currentShaderUUID = int.MinValue;
             Shader? currentShader = null;
@@ -527,6 +521,7 @@ namespace Gears
                         break;
                     case Material._RenderType.Transparent:
                         GL.Enable(EnableCap.Blend);
+                        GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
                         break;
                 }
 
@@ -579,15 +574,22 @@ namespace Gears
             public int SortLayer;
             public Layer ObjectLayer;
 
-            public RenderRequest(SubMesh subMesh, Matrix4 modelMatrix, int sortLayer = 0, Layer objectLayer = Layer.Default)
+            public RenderRequest(SubMesh subMesh, Matrix4 modelMatrix, int sortLayer = 0, Layer objectLayer = Layer.Default, Material? materialOverride = null)
             {
                 this.subMesh = subMesh;
                 this.ModelMatrix = modelMatrix;
                 this.SortLayer = sortLayer;
                 this.ObjectLayer = objectLayer;
 
-                MaterialByUUID.TryGetValue(subMesh.MaterialUUID, out var mat);
-                this.material = mat ?? MissingMaterial;
+                if (materialOverride != null)
+                {
+                    this.material = materialOverride;
+                }
+                else
+                {
+                    MaterialByUUID.TryGetValue(subMesh.MaterialUUID, out var mat);
+                    this.material = mat ?? MissingMaterial;
+                }
                 this.Transparent = material.SeeThroughType != Material._RenderType.Opaque;
             }
         }
@@ -604,7 +606,7 @@ namespace Gears
         /// </summary>
         public static void BeginProbeCapture()
         {
-            Scene? activeScene = ActiveScene;
+            Scene? activeScene = SceneManager.ActiveScene;
             if (activeScene == null) return;
 
             ProbeCaptureQueue.Clear();

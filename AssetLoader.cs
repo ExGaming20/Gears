@@ -129,6 +129,7 @@ namespace Gears
                 foreach (JsonElement tex in texArray.EnumerateArray())
                 {
                     string textureName = tex.GetProperty("TextureName").GetString() ?? "";
+                    string semanticName = tex.TryGetProperty("SemanticName", out JsonElement sem) ? sem.GetString() ?? "" : "";
                     float scaleX = tex.GetProperty("TextureScale").GetProperty("X").GetSingle();
                     float scaleY = tex.GetProperty("TextureScale").GetProperty("Y").GetSingle();
                     float offsetX = tex.GetProperty("TextureOffset").GetProperty("X").GetSingle();
@@ -150,6 +151,7 @@ namespace Gears
                     {
                         TextureUUID = texture?.UUID ?? 0,
                         TextureName = textureName,
+                        SemanticName = semanticName,
                         TextureScale = new Vector2(scaleX, scaleY),
                         TextureOffset = new Vector2(offsetX, offsetY)
                     });

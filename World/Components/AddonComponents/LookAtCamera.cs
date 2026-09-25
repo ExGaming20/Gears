@@ -1,37 +1,45 @@
-﻿using OpenTK.Mathematics;
+﻿using System;
+using OpenTK.Mathematics;
 
 namespace Gears.World.Components.AddonComponents
 {
     public class LookAtCamera : BaseComponent
     {
-        public Camera? Camera { get; private set; }
-
-        public override void Start()
-        {
-            var cameraObject = Scene.ActiveCamera;
-            if (cameraObject == null)
-            {
-                Logger.Instance.LogError("LookAtCamera requires a Camera component on the same GameObject", nameof(Camera));
-                return;
-            }
-            Camera = cameraObject.GetComponent<Camera>();
-            if (Camera == null)
-            {
-                Logger.Instance.LogError("ActiveCamera GameObject does not have a Camera component", nameof(Camera));
-            }
-        }
-
         public override void Update()
         {
             base.Update();
-            if (Camera == null || Transform == null) return;
-            var lookAtMatrix = Matrix4.LookAt(Transform.Position, Camera.Transform.Position, Vector3.UnitY);
-            var rotationMatrix3 = new Matrix3(
-                lookAtMatrix.M11, lookAtMatrix.M12, lookAtMatrix.M13,
-                lookAtMatrix.M21, lookAtMatrix.M22, lookAtMatrix.M23,
-                lookAtMatrix.M31, lookAtMatrix.M32, lookAtMatrix.M33
-            );
-            Transform.Rotation = Quaternion.FromMatrix(rotationMatrix3);
+
+            var cameraTransform = SceneManager.ActiveScene?.MainCamera?.Transform;
+
+            if (cameraTransform != null)
+            {
+                //var directionToCamera = cameraTransform.Position - Transform.Position;
+                //Vector3 forwardDir = Transform.Rotation * (-Vector3.UnitY);
+                //
+                //Quaternion relativeRotation = Quaternion.FromAxisAngle(
+                //    Vector3.Cross(forwardDir, directionToCamera),
+                //    Vector3.CalculateAngle(forwardDir, directionToCamera)
+                //);
+                //
+                //Quaternion targetRotation = Quaternion.Normalize(Quaternion.Multiply(relativeRotation, Transform.Rotation));
+                //
+                //Transform.Rotation = targetRotation;
+
+
+                //directionToCamera += Transform.Position;
+
+                //Transform.LookAt(directionToCamera);
+                //Transform.LookAt(cameraTransform.Position);
+
+                //Vector3 d = Vector3.Normalize(cameraTransform.Position - Transform.Position);
+                //
+                //float yaw = MathF.Atan2(d.X, d.Z);
+                //float pitch = -MathF.Atan2(d.Y, MathF.Sqrt(d.X * d.X + d.Z * d.Z));
+                //
+                //Transform.Rotation = Quaternion.FromEulerAngles(pitch, yaw, 0);
+
+                Transform.LookAt(cameraTransform.Position);
+            }
         }
     }
 }

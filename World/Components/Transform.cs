@@ -225,7 +225,7 @@ namespace Gears.World.Components
         {
             var dir = Vector3.Normalize(target - _position);
 
-            if (dir.LengthSquared < 1e-6f)
+            if (dir.LengthSquared < 1e-8f)
             {
                 return;
             }
@@ -234,7 +234,7 @@ namespace Gears.World.Components
             var matrix = Matrix4.LookAt(_position, target, upVec);
 
             matrix.Invert();
-            _rotation = matrix.ExtractRotation();
+            _rotation = matrix.ExtractRotation() * Quaternion.FromAxisAngle(Vector3.UnitY, MathF.PI / 2);
             UpdateLocalRotationFromWorld();
             _dirty = true;
         }

@@ -9,6 +9,9 @@ namespace Gears.World.Components
         /// <summary>Render sort order (opaque pass layer ordering, not the semantic GameObject Layer).</summary>
         public int SortLayer { get; set; } = 0;
 
+        /// <summary>Optional material override. If null, uses the SubMesh's material.</summary>
+        public Material? Material { get; set; }
+
         private MeshFilter? _meshFilter;
 
         public override void Start()
@@ -33,7 +36,7 @@ namespace Gears.World.Components
             foreach (var subMesh in _meshFilter.Mesh.SubMeshes)
             {
                 // SortLayer controls draw order; GameObject.Layer controls light/camera culling
-                Game.AddRenderRequest(subMesh, GameObject.Transform.WorldMatrix, SortLayer, GameObject.Layer);
+                Game.AddRenderRequest(subMesh, GameObject.Transform.WorldMatrix, SortLayer, GameObject.Layer, Material);
             }
         }
 

@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using Gears.Utilities;
+using Gears.World;
 using Gears.World.Components;
 using OpenTK.Graphics.OpenGL4;
 using OpenTK.Mathematics;
@@ -124,7 +125,7 @@ namespace Gears.Graphics
             // takes that unit's index as an int. Passing the Texture object straight into
             // SetUniform (as this used to do for skyBox) doesn't work — ShaderProgram.SetUniform
             // only understands bool/int/float/Vector2/3/4/Matrix4 and silently no-ops otherwise.
-            Texture? skyBox = Game.Instance?.scene?.SkyBox;
+            Texture? skyBox = Scene.SkyBox;
             if (skyBox != null && textureUnit < _maxTextureUnits && DoesUniformExist(shader, "skyBox"))
             {
                 skyBox.Use(textureUnit);
@@ -143,9 +144,12 @@ namespace Gears.Graphics
                 if (!Game.TextureByUUID.TryGetValue(texData.TextureUUID, out Texture? texture)) continue;
 
                 texture.Use(textureUnit);
-                SetSafeUniform(shader, $"material_{texData.TextureName}", textureUnit);
-                SetSafeUniform(shader, $"material_{texData.TextureName}Scale", texData.TextureScale);
-                SetSafeUniform(shader, $"material_{texData.TextureName}Offset", texData.TextureOffset);
+
+                string uniformBase = string.IsNullOrEmpty(texData.SemanticName) ? texData.TextureName : texData.SemanticName;
+
+                SetSafeUniform(shader, $"material_{uniformBase}", textureUnit);
+                SetSafeUniform(shader, $"material_{uniformBase}Scale", texData.TextureScale);
+                SetSafeUniform(shader, $"material_{uniformBase}Offset", texData.TextureOffset);
 
                 textureUnit++;
             }

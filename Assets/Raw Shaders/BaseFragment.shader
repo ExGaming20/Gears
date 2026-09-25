@@ -201,12 +201,7 @@ float SampleShadow2D(int shadowIndex, vec4 lightSpacePos, float rawBias, float n
     // really want per-pixel dither, jitter the *comparison* instead, e.g.:
     //   float dither = (BlueNoise(gl_FragCoord.xy) - 0.5) * 1e-4;
     //   shadow += (proj.z - bias + dither > depth) ? 0.0 : 1.0;
-    if (shadow / float(SHADOW2D_PCF_TAPS) < 0.25)
-    {
-        return shadow / float(SHADOW2D_PCF_TAPS);
-    }
-
-    return clamp(shadow / float(SHADOW2D_PCF_TAPS) + BlueNoise(gl_FragCoord.xy) / 2.0, 0.0, 1.0);
+    return shadow / float(SHADOW2D_PCF_TAPS);
 }
 
 // Algorithm: omnidirectional (cubemap) shadow mapping for point lights. The cube
@@ -257,13 +252,7 @@ float SampleShadowCube(int shadowIndex, vec3 lightToFrag, float farPlane,
         shadow += (currentDist - bias > closest) ? 0.0 : 1.0;
     }
 
-    if (shadow / float(SHADOW2D_PCF_TAPS) < 0.25)
-    {
-        return shadow / float(SHADOW2D_PCF_TAPS);
-    }
-
-    // Same warning as SampleShadow2D - see comment there.
-    return clamp(shadow / float(SHADOWCUBE_PCF_TAPS) + BlueNoise(gl_FragCoord.xy) / 2.0, 0.0, 1.0);
+    return shadow / float(SHADOWCUBE_PCF_TAPS);
 }
 
 void main()
@@ -280,8 +269,8 @@ void main()
     vec3 ambient = vec3(0.005);
     vec3 diffuse = vec3(0.0);
 
-    // Accumulated visibility across shadow-casting lights so ambient can be
-    // attenuated in shadowed regions instead of being propped up by a floor.
+    // Track average visibility across shadow-casting lights
+    // so ambient is attenuated by how shadowed the surface is on average.
     float visibilitySum = 0.0;
     int   shadowCastingLights = 0;
 
@@ -329,22 +318,19 @@ void main()
             float normalBias = light.shadowA.z;
             vec3 biasedPos = vFragPos + normal * normalBias;
 
+            float rawShadow;
             if (type == LIGHT_POINT)
-                shadow = SampleShadowCube(shadowIndex, biasedPos - light.position.xyz,
-                                          light.size.w, bias, ndl, soft);
+                rawShadow = SampleShadowCube(shadowIndex, biasedPos - light.position.xyz,
+                                             light.size.w, bias, ndl, soft);
             else
-                shadow = SampleShadow2D(shadowIndex, light.lightSpaceMatrix * vec4(biasedPos, 1.0),
-                                        bias, ndl, soft);
+                rawShadow = SampleShadow2D(shadowIndex, light.lightSpaceMatrix * vec4(biasedPos, 1.0),
+                                            bias, ndl, soft);
 
-            // HARD BINARY SHADOW GATE.
-            // Any fragment the PCF classifies as mostly occluded gets ZERO direct
-            // (Phong/lambert) lighting from this light. Without this, a fragment whose
-            // normal faces the light but sits in shadow would still be lit by N·L.
-            // No mix() with shadowStrength - that would silently re-enable partial light.
-            shadow = shadow < SHADOW_HARD_THRESHOLD ? 0.0 : 1.0;
+            // Apply artist-controlled shadow strength (0 = no shadow, 1 = full shadow)
+            float shadowStrength = light.params.z;
+            shadow = mix(1.0, rawShadow, shadowStrength);
 
-            // Track visibility for ambient attenuation. Only shadow-casting lights
-            // contribute, so unshadowed lights don't dilute the average.
+            // Accumulate visibility for ambient attenuation
             visibilitySum += shadow;
             shadowCastingLights += 1;
         }
@@ -358,7 +344,7 @@ void main()
     // present, but a fallback keeps the result non-black if no albedo is bound on this pass.
     vec3 albedo = baseColor.rgb * (vec3(texture(material_albedo, vUV)) + vec3(1e-3));
 
-    // Ambient is scaled by average shadow visibility so a fully-shadowed fragment
+// Ambient is scaled by average shadow visibility so a fully-shadowed fragment
     // goes dark instead of being propped up by the constant floor.
     float ambientVisibility = shadowCastingLights > 0
         ? visibilitySum / float(shadowCastingLights)

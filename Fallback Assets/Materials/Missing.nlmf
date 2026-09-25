@@ -20,6 +20,7 @@
   "Textures": [
     {
       "TextureName": "albedo",
+      "SemanticName": "albedo",
       "TextureScale": {"X": 1.0, "Y": 1.0},
       "TextureOffset": {"X": 0.0, "Y": 0.0},
 
