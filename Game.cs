@@ -41,6 +41,8 @@ namespace Gears
         private static readonly List<RenderRequest> ProbeCaptureQueue = new List<RenderRequest>();
         private static bool _capturingForProbe = false;
 
+        public static List<AssetBundle> Bundles = new List<AssetBundle>();
+
         public static string ActiveCameraName = "MainCamera";
 
         private FrameBuffer _frameBuffer;
@@ -197,7 +199,7 @@ namespace Gears
             lightObj2.GetComponent<Light>().lightType = Light.LightType.Directional;
             lightObj2.GetComponent<Light>().shadowType = Light.ShadowType.Soft;
             lightObj2.GetComponent<Transform>().Position = new Vector3(10, 0, 0);
-            lightObj2.GetComponent<Transform>().EulerAngles = new Vector3(-90, 0, 0);
+            lightObj2.GetComponent<Transform>().EulerAngles = new Vector3(-60, -35, 0);
             lightObj2.GetComponent<Light>().intensity = 0.5f;
             lightObj2.GetComponent<Light>().color = new Color4(1f, 0f, 0f, 1f);
             lightObj2.GetComponent<Light>().shadowResolution = Light.ShadowResolution.Medium;
@@ -222,9 +224,10 @@ namespace Gears
             var Eprob = new GameObject("Eprob");
             activeScene.MakeGameObject(Eprob);
             Eprob.AddComponent<EProbe>();
-            Eprob.GetComponent<EProbe>().Far = 25f;
+            Eprob.GetComponent<EProbe>().Far = 50f;
             Eprob.GetComponent<EProbe>().Near = 0.1f;
             Eprob.GetComponent<EProbe>().Resolution = 128;
+            Eprob.GetComponent<EProbe>().Domein = Vector3.One * 50;
             Eprob.Transform.Position = new Vector3(0, -2.5f, 0);
         }
 

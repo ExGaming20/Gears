@@ -199,6 +199,22 @@ public class GameObject
         return component;
     }
 
+    // For a component that was constructed and configured elsewhere (e.g. by
+    // the scene loader). Skips the "new T()" default-construction that
+    // AddComponent<T>() does, so field values set before this call are what
+    // Awake()/Start() see, not defaults overwritten afterward.
+    public BaseComponent AddComponent(BaseComponent component)
+    {
+        component.GameObject = this;
+        _components.Add(component);
+        component.Awake();
+
+        if (IsActive && component.enabled)
+            component.OnEnable();
+
+        return component;
+    }
+
     public T? GetComponent<T>() where T : BaseComponent
     {
         foreach (var c in _components)

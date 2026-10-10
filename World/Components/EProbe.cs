@@ -13,9 +13,9 @@ namespace Gears.World.Components
         public float Far { get; set; } = 500f;
         public float Near { get; set; } = 0.1f;
 
-        public Vector3 Domein { get; set; } = Vector3.Zero; // the volume that gameobjects would even consider to use for the "nearest" EProbe
+        public Vector3 Domein { get; set; } = Vector3.One; // the volume that gameobjects would even consider to use for the "nearest" EProbe
 
-        private static int _nextUUID = 0;
+        private static int _nextUUID = Guid.NewGuid().GetHashCode();
         private int _UUID;
 
         private static readonly Vector3[] Directions = new Vector3[6]
@@ -51,7 +51,8 @@ namespace Gears.World.Components
         public override void Awake()
         {
             base.Awake();
-            _UUID = _nextUUID++;
+            _nextUUID = Guid.NewGuid().GetHashCode();
+            _UUID = _nextUUID;
 
             Color = new Texture($"EProbe_Color{_UUID}", new Vector2i(Resolution, Resolution));
             Depth = new Texture($"EProbe_Depth{_UUID}", new Vector2i(Resolution, Resolution));
