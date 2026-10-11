@@ -125,7 +125,7 @@ namespace Gears.Graphics
             // takes that unit's index as an int. Passing the Texture object straight into
             // SetUniform (as this used to do for skyBox) doesn't work — ShaderProgram.SetUniform
             // only understands bool/int/float/Vector2/3/4/Matrix4 and silently no-ops otherwise.
-            Texture? skyBox = Scene.SkyBox;
+            Texture? skyBox = SceneManager.SkyBox;
             if (skyBox != null && textureUnit < _maxTextureUnits && DoesUniformExist(shader, "skyBox"))
             {
                 skyBox.Use(textureUnit);

@@ -1,11 +1,29 @@
 ﻿using System;
 using System.Collections.Generic;
+using Gears.Graphics;
 
 namespace Gears.World
 {
     public static class SceneManager
     {
         private static readonly Dictionary<string, Func<Scene>> _registry = new();
+
+        // Engine-wide, shared across every loaded scene - not owned by any
+        // single Scene. Retained/released like any other Texture reference;
+        // actually deleted at application shutdown (see Game.OnUnload), not
+        // when an individual scene unloads.
+        private static Texture? _skyBox;
+        public static Texture? SkyBox
+        {
+            get => _skyBox;
+            set
+            {
+                if (_skyBox == value) return;
+                _skyBox?.Release();
+                _skyBox = value;
+                _skyBox?.Retain();
+            }
+        }
         private static readonly List<Scene> _loaded = new();
 
         public static Scene? ActiveScene { get; private set; }

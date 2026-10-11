@@ -1,0 +1,6 @@
+{
+  "Type": "Shader",
+  "Location": "/Shaders/ULitShaderURP.nlsf",
+  "UUID": "9566ad68-6ca7-4a43-a63d-04c9e28d41e9",
+  "Name": "ULitShaderURP"
+}

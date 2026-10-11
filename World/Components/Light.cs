@@ -1,4 +1,5 @@
-﻿using Gears.Graphics;
+﻿using Gears;
+using Gears.Graphics;
 using OpenTK.Mathematics;
 
 namespace Gears.World.Components
@@ -33,7 +34,18 @@ namespace Gears.World.Components
         public float range = 10f;
 
         /// <summary>UUID of the cookie texture. -1 means no cookie.</summary>
-        public int cookieTextureUUID = -1;
+        private int _cookieTextureUUID = -1;
+        public int cookieTextureUUID
+        {
+            get => _cookieTextureUUID;
+            set
+            {
+                if (_cookieTextureUUID == value) return;
+                FindLoadedAssets.FindTexture(null, _cookieTextureUUID)?.Release();
+                _cookieTextureUUID = value;
+                FindLoadedAssets.FindTexture(null, _cookieTextureUUID)?.Retain();
+            }
+        }
         public Vector2 cookieScale = Vector2.One;
         public Vector2 cookieOffset = Vector2.Zero;
 
@@ -80,6 +92,7 @@ namespace Gears.World.Components
         {
             base.OnDestroy();
             LightManager.Unregister(this);
+            cookieTextureUUID = -1;
         }
 
         public static Vector4 TemperatureToColor(float kelvin)

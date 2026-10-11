@@ -48,22 +48,23 @@ public static class Input
 
     public static bool GetKeyDown(KeyCode key)
     {
-        return _currentKeyboard.IsKeyDown(MapKeyCode(key));
+        return _hasValidKeyboard && _currentKeyboard.IsKeyDown(MapKeyCode(key));
     }
 
+    // "Up" means "released this frame" (an edge), not "currently not held".
     public static bool GetKeyUp(KeyCode key)
     {
-        return !_currentKeyboard.IsKeyDown(MapKeyCode(key));
+        return _hasValidKeyboard && _currentKeyboard.IsKeyReleased(MapKeyCode(key));
     }
 
     public static bool GetKeyPressed(KeyCode key)
     {
-        return _currentKeyboard.IsKeyPressed(MapKeyCode(key));
+        return _hasValidKeyboard && _currentKeyboard.IsKeyPressed(MapKeyCode(key));
     }
 
     public static bool GetKeyReleased(KeyCode key)
     {
-        return _currentKeyboard.IsKeyReleased(MapKeyCode(key));
+        return _hasValidKeyboard && _currentKeyboard.IsKeyReleased(MapKeyCode(key));
     }
 
     private static bool GetKeyState(KeyCode key, KeyboardState state)
@@ -93,7 +94,7 @@ public static class Input
 
     public static bool GetMouseButtonUp(MouseButtons button)
     {
-        return _hasValidMouse && !_currentMouse.IsButtonDown(MapMouseButton(button));
+        return _hasValidMouse && _currentMouse.IsButtonReleased(MapMouseButton(button));
     }
 
     public static bool GetMouseButtonReleased(MouseButtons button)

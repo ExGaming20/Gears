@@ -1,0 +1,6 @@
+{
+  "Type": "RawShader",
+  "Location": "/Raw Shaders/ShadowCubeVertex.shader",
+  "UUID": "5046d404-a9e5-4cdc-9d11-c400f0acfffd",
+  "Name": "ShadowCubeVertex"
+}

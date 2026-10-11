@@ -1,0 +1,6 @@
+{
+  "Type": "RawShader",
+  "Location": "/Raw Shaders/ULitFragment.shader",
+  "UUID": "8048326d-b47a-4531-a14d-c718a29c5a9a",
+  "Name": "ULitFragment"
+}

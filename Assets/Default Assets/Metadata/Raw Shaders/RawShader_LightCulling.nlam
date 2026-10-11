@@ -1,0 +1,6 @@
+{
+  "Type": "RawShader",
+  "Location": "/Raw Shaders/LightCulling.shader",
+  "UUID": "feb62839-5f9e-4159-b6ca-17cfca122662",
+  "Name": "LightCulling"
+}

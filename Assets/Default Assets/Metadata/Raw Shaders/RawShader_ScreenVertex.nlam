@@ -1,0 +1,6 @@
+{
+  "Type": "RawShader",
+  "Location": "/Raw Shaders/ScreenVertex.shader",
+  "UUID": "3e3912f0-a800-4583-8576-e9c4e3c9f87f",
+  "Name": "ScreenVertex"
+}

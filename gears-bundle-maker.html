@@ -1,0 +1,1847 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gears bundle maker</title>
+<style>
+:root{
+  --bg:#13161a; --panel:#1a1e23; --raised:#232930; --sunk:#101316;
+  --line:#303840; --line-soft:#272d34;
+  --text:#d9dee3; --muted:#8a95a0; --faint:#5d6873;
+  --brass:#c9a65b; --brass-dim:#8f7539; --brass-wash:rgba(201,166,91,.15);
+  --ok:#6fb7a3; --warn:#d9a441; --err:#e0716a;
+  --ui:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
+  --mono:"Cascadia Mono","Cascadia Code",Consolas,"SF Mono",Menlo,monospace;
+  --right:clamp(300px,30vw,460px); --assetsH:36vh; --tree:190px;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font:13px/1.45 var(--ui);overflow:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--brass);outline-offset:1px}
+::selection{background:var(--brass-dim);color:#fff}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#2d353d;border:2px solid var(--panel);border-radius:6px}
+::-webkit-scrollbar-thumb:hover{background:#3a444e}
+svg.i{width:15px;height:15px;flex:none}
+
+/* ---- layout: bar on top, left column (viewer over assets), settings on the right ---- */
+#app{display:grid;height:100vh;grid-template-columns:minmax(0,1fr) 5px var(--right);grid-template-rows:46px minmax(0,1fr)}
+#bar{grid-column:1/-1;grid-row:1;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--panel);border-bottom:1px solid var(--line);min-width:0;overflow-x:auto}
+#left{grid-column:1;grid-row:2;display:grid;grid-template-rows:minmax(0,1fr) 5px var(--assetsH);min-width:0;min-height:0}
+#splitR{grid-column:2;grid-row:2;background:var(--bg);cursor:col-resize}
+#inspector{grid-column:3;grid-row:2;background:var(--panel);overflow:auto;min-height:0}
+#splitH{background:var(--bg);cursor:row-resize}
+#splitR:hover,#splitH:hover,.split.drag{background:var(--brass-dim)}
+
+/* ---- top bar ---- */
+.brand{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;margin-right:4px;white-space:nowrap}
+.brand svg{width:20px;height:20px;color:var(--brass)}
+.field{display:flex;align-items:center;gap:6px;color:var(--muted)}
+.field input{background:var(--sunk);border:1px solid var(--line);border-radius:3px;padding:4px 8px;color:var(--text);width:170px}
+.group{display:flex;gap:6px;padding-left:10px;border-left:1px solid var(--line-soft)}
+.spacer{flex:1;min-width:8px}
+.btn{background:var(--raised);border:1px solid var(--line);border-radius:3px;padding:4px 11px;cursor:pointer;color:var(--text);white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:#47525d;background:#2a323a}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.primary{background:var(--brass);border-color:var(--brass);color:#16130a;font-weight:600}
+.btn.primary:hover{background:#d8b66a}
+.btn.small{padding:2px 8px;font-size:12px}
+.btn.danger:hover{border-color:var(--err);color:var(--err)}
+.icon-btn{background:none;border:0;color:var(--muted);cursor:pointer;padding:3px 5px;border-radius:3px;line-height:1;display:inline-flex}
+.icon-btn:hover{color:var(--text);background:var(--raised)}
+.icon-btn:disabled{opacity:.35;cursor:default}
+.badge{font:11px var(--mono);padding:0 6px;border-radius:8px;background:var(--raised);color:var(--muted)}
+.badge.err{background:var(--err);color:#190807}
+.badge.warn{background:var(--warn);color:#1b1304}
+.badge.ok{background:#2c4a43;color:var(--ok)}
+.menu{position:relative}
+.menu-pop{position:absolute;top:calc(100% + 4px);left:0;min-width:200px;background:var(--raised);border:1px solid var(--line);border-radius:6px;padding:4px;z-index:30;box-shadow:0 10px 30px rgba(0,0,0,.45);display:none}
+.menu.open .menu-pop{display:block}
+.menu-pop button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:0;padding:6px 8px;border-radius:3px;cursor:pointer}
+.menu-pop button:hover{background:var(--brass-wash)}
+
+/* ---- viewer (green) ---- */
+#viewer{display:flex;flex-direction:column;min-height:0;min-width:0}
+#viewbar{display:flex;align-items:center;gap:10px;padding:0 10px;height:36px;flex:none;background:var(--panel);border-bottom:1px solid var(--line-soft);min-width:0}
+#viewTitle{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#viewTitle small{color:var(--muted);font-weight:400;margin-left:8px}
+#viewTools{display:flex;gap:6px;margin-left:auto;align-items:center}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:3px;overflow:hidden}
+.seg button{background:var(--raised);border:0;border-right:1px solid var(--line);padding:2px 9px;cursor:pointer;color:var(--muted)}
+.seg button:last-child{border-right:0}
+.seg button.on{background:var(--brass-wash);color:var(--brass)}
+.seg button:hover{color:var(--text)}
+#viewport{position:relative;flex:1;min-height:0;overflow:hidden;
+  background:
+    linear-gradient(rgba(120,150,175,.07) 1px,transparent 1px) 0 0/24px 24px,
+    linear-gradient(90deg,rgba(120,150,175,.07) 1px,transparent 1px) 0 0/24px 24px,
+    radial-gradient(ellipse at 50% 40%,#1d252d 0%,#12161a 75%)}
+#viewport canvas{position:absolute;inset:0;width:100%;height:100%;display:none;touch-action:none;cursor:grab}
+#viewport canvas:active{cursor:grabbing}
+#viewport.mode-gl #gl,#viewport.mode-2d #c2d{display:block}
+#textView{position:absolute;inset:0;overflow:auto;display:none;padding:16px 20px}
+#viewport.mode-text #textView{display:block}
+#viewMsg{position:absolute;inset:0;display:none;align-items:center;justify-content:center;text-align:center;color:var(--muted);padding:30px;line-height:1.7}
+#viewport.mode-empty #viewMsg{display:flex}
+#viewInfo{position:absolute;left:10px;bottom:8px;font:11px var(--mono);color:var(--muted);background:rgba(16,19,22,.72);padding:2px 8px;border-radius:3px;pointer-events:none;display:none}
+#viewport.mode-gl #viewInfo,#viewport.mode-2d #viewInfo{display:block}
+.code{display:grid;grid-template-columns:auto 1fr;gap:0 14px;font:12px/1.55 var(--mono)}
+.code pre{margin:0;white-space:pre;tab-size:4}
+.code .ln{color:var(--faint);text-align:right;user-select:none}
+.pipe{display:flex;align-items:center;flex-wrap:wrap;row-gap:14px}
+.stage{border:1px solid var(--line);background:var(--panel);border-radius:4px;padding:10px 14px;min-width:150px}
+.stage .k{color:var(--muted);font-size:12px}
+.stage .v{font:13px var(--mono);margin-top:2px}
+.stage.ok{border-color:#3f6b60}
+.stage.miss{border-color:var(--warn)}
+.stage.none{border-style:dashed;color:var(--faint)}
+.wire{width:34px;height:2px;background:var(--line)}
+.tree{font:13px var(--mono)}
+.tree .node{margin-left:16px;border-left:1px solid var(--line);padding-left:12px}
+.tree .nn{padding:2px 0}
+.chip{display:inline-block;background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:0 8px;margin-left:6px;font:11px var(--ui);color:var(--muted)}
+
+/* ---- asset panel (red) ---- */
+#assets{display:flex;flex-direction:column;min-height:0;min-width:0;background:var(--panel);border-top:1px solid var(--line-soft)}
+.a-bar{display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--line-soft);flex:none;min-width:0}
+.crumbs{display:flex;align-items:center;gap:2px;min-width:0;overflow:hidden;white-space:nowrap}
+.crumbs button{background:none;border:0;color:var(--muted);cursor:pointer;padding:2px 5px;border-radius:3px}
+.crumbs button:hover{color:var(--text);background:var(--raised)}
+.crumbs button:last-child{color:var(--text)}
+.crumbs .sep{color:var(--faint)}
+.a-bar input[type=search]{margin-left:auto;background:var(--sunk);border:1px solid var(--line);border-radius:3px;padding:3px 8px;width:170px;color:var(--text)}
+.a-body{flex:1;display:grid;grid-template-columns:var(--tree) minmax(0,1fr);min-height:0}
+#tree{overflow:auto;border-right:1px solid var(--line-soft);padding:6px 0;background:#171b1f}
+.trow{display:flex;align-items:center;gap:6px;padding:3px 8px;cursor:pointer;white-space:nowrap;border-left:2px solid transparent}
+.trow:hover{background:#20262c}
+.trow.sel{background:var(--brass-wash);border-left-color:var(--brass)}
+.trow.drop{outline:1px dashed var(--brass);outline-offset:-2px}
+.trow .chev{width:10px;height:10px;flex:none;color:var(--faint);transition:transform .12s}
+.trow .chev.closed{transform:rotate(-90deg)}
+.trow .chev.none{visibility:hidden}
+.trow svg.i{color:var(--muted)}
+.trow.sel svg.i{color:var(--brass)}
+.trow .nm{overflow:hidden;text-overflow:ellipsis}
+.trow.stub{color:var(--faint);font-style:italic}
+.tsec{padding:8px 10px 3px;color:var(--faint);font-size:12px}
+#tiles{overflow:auto;padding:10px;display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px;align-content:start}
+.tile{display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 4px;border-radius:4px;border:1px solid transparent;cursor:pointer;min-width:0;position:relative}
+.tile:hover{background:#20262c}
+.tile.sel{background:var(--brass-wash);border-color:var(--brass-dim)}
+.tile.drop{outline:1px dashed var(--brass)}
+.thumb{width:68px;height:68px;border-radius:3px;background:var(--sunk);border:1px solid var(--line-soft);display:flex;align-items:center;justify-content:center;overflow:hidden;color:var(--muted)}
+.thumb canvas{width:100%;height:100%;display:block}
+.thumb svg.i{width:30px;height:30px}
+.thumb .swatch{width:42px;height:42px;border-radius:50%;box-shadow:inset -6px -8px 12px rgba(0,0,0,.45),inset 5px 5px 8px rgba(255,255,255,.22)}
+.tile .nm{font-size:12px;text-align:center;line-height:1.25;max-width:100%;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word}
+.tile .dot{position:absolute;top:6px;right:8px}
+.tile .lock{position:absolute;top:6px;left:8px;color:var(--faint)}
+.tile .lock svg{width:11px;height:11px}
+.dot{width:7px;height:7px;border-radius:50%;flex:none}
+.dot.err{background:var(--err)} .dot.warn{background:var(--warn)}
+.empty{padding:22px 16px;color:var(--faint);line-height:1.7;grid-column:1/-1}
+.empty b{color:var(--muted);font-weight:600}
+
+/* ---- settings panel (blue) ---- */
+.ins-head{padding:12px 14px;border-bottom:1px solid var(--line-soft)}
+.ins-type{display:flex;align-items:center;gap:8px;color:var(--brass);margin-bottom:8px}
+.sec{border-bottom:1px solid var(--line-soft);padding:10px 14px 12px}
+.sec>h3{margin:0 0 8px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px}
+.sec>h3 .grow{flex:1}
+.row{display:grid;grid-template-columns:104px minmax(0,1fr);gap:8px;align-items:center;margin:5px 0}
+.row>label{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row input[type=text],.row input[type=number],.row select,.row textarea,.xrow input[type=text],.xrow input[type=number],.xrow select{width:100%;background:var(--sunk);border:1px solid var(--line);border-radius:3px;padding:3px 7px;min-width:0}
+.row input[type=range]{width:100%;accent-color:var(--brass)}
+.row input[type=color]{width:34px;height:24px;padding:0;border:1px solid var(--line);background:var(--sunk);border-radius:3px}
+.row input[type=checkbox]{accent-color:var(--brass);justify-self:start}
+.row select option,.row select optgroup{background:var(--raised)}
+.row .pair{display:flex;gap:6px;align-items:center}
+.row .pair input[type=number]{width:72px}
+.row .ro{font:12px var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row.stack{grid-template-columns:1fr}
+textarea.src{font:12px/1.5 var(--mono);min-height:220px;resize:vertical;white-space:pre;tab-size:4}
+.note{color:var(--muted);font-size:12px;line-height:1.55;margin:6px 0}
+.note.warn{color:var(--warn)} .note.err{color:var(--err)} .note.ok{color:var(--ok)}
+.slot{border:1px solid var(--line);border-radius:4px;padding:8px 10px;margin:8px 0;background:#1e242a}
+.slot-head{display:flex;align-items:center;gap:6px;margin-bottom:4px;font-weight:600}
+.slot-head .grow{flex:1}
+.slot details{margin-top:6px}
+.slot summary{cursor:pointer;color:var(--muted)}
+.xrow{display:grid;grid-template-columns:minmax(0,1fr) 78px minmax(0,1fr) 22px;gap:6px;margin:5px 0;align-items:center}
+.xrow input[type=checkbox]{accent-color:var(--brass)}
+.sug{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.mstat{display:flex;gap:8px;align-items:center;padding:2px 0;font-size:12px}
+.mono{font-family:var(--mono)}
+pre.gen{margin:0;font:12px/1.5 var(--mono);white-space:pre-wrap;word-break:break-all;background:var(--sunk);border:1px solid var(--line-soft);border-radius:3px;padding:8px;max-height:260px;overflow:auto}
+.prob{display:flex;gap:10px;align-items:flex-start;padding:4px 6px;border-radius:3px;cursor:pointer}
+.prob:hover{background:var(--raised)}
+.prob .dot{margin-top:6px}
+.prob .who{color:var(--muted);flex:none;min-width:130px}
+.reflist .rr{display:flex;align-items:center;gap:8px;padding:3px 0}
+.reflist .rr .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ---- review dialog ---- */
+dialog#review{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:0;width:min(820px,92vw);height:min(560px,84vh);box-shadow:0 20px 60px rgba(0,0,0,.6)}
+dialog#review::backdrop{background:rgba(8,10,12,.65)}
+dialog#review[open]{display:flex;flex-direction:column}
+.dlg-head{display:flex;align-items:center;gap:6px;padding:6px 10px 0;border-bottom:1px solid var(--line-soft)}
+.tab{background:none;border:0;border-bottom:2px solid transparent;padding:8px 12px;cursor:pointer;color:var(--muted)}
+.tab:hover{color:var(--text)}
+.tab.on{color:var(--text);border-bottom-color:var(--brass)}
+#reviewBody{flex:1;overflow:auto;padding:12px 16px;min-height:0}
+#reviewBody pre{margin:0;font:12px/1.55 var(--mono);white-space:pre-wrap;word-break:break-all}
+.ftree{font:12px/1.7 var(--mono)}
+.ftree .d{color:var(--brass)} .ftree .sz{color:var(--faint);margin-left:10px}
+
+#dropHint{position:fixed;inset:0;background:rgba(19,22,26,.82);border:2px dashed var(--brass);display:none;align-items:center;justify-content:center;font-size:18px;color:var(--brass);z-index:50;pointer-events:none}
+body.dragging #dropHint{display:flex}
+#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--raised);border:1px solid var(--line);border-radius:6px;padding:8px 14px;z-index:60;display:none;max-width:70vw;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+#toast.show{display:block}
+#toast.err{border-color:var(--err)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-Texture" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/><rect x="2.7" y="2.7" width="5.3" height="5.3" fill="currentColor"/><rect x="8" y="8" width="5.3" height="5.3" fill="currentColor"/></symbol>
+  <symbol id="i-Model" viewBox="0 0 16 16"><path d="M8 1.8 14 5v6l-6 3.2L2 11V5z M2 5l6 3.2L14 5 M8 8.2v6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></symbol>
+  <symbol id="i-Shader" viewBox="0 0 16 16"><path d="M8 2 14.5 13.5h-13z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><circle cx="8" cy="10" r="1.6" fill="currentColor"/></symbol>
+  <symbol id="i-RawShader" viewBox="0 0 16 16"><path d="M5.5 4 2 8l3.5 4M10.5 4 14 8l-3.5 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-Material" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M4.6 6.4a3.9 3.9 0 0 1 2.8-1.7" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+  <symbol id="i-Scene" viewBox="0 0 16 16"><circle cx="8" cy="3.6" r="1.8" fill="currentColor"/><circle cx="4" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><path d="M8 5.4 4 10.2M8 5.4l4 4.8" stroke="currentColor" stroke-width="1.3" fill="none"/></symbol>
+  <symbol id="i-Component" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.3" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r="4.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 1.4v2.2M8 12.4v2.2M1.4 8h2.2M12.4 8h2.2M3.3 3.3l1.5 1.5M11.2 11.2l1.5 1.5M12.7 3.3l-1.5 1.5M4.8 11.2l-1.5 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 16 16"><path d="M1.8 4.2h4.2l1.4 1.6h6.8v7H1.8z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></symbol>
+  <symbol id="i-bundle" viewBox="0 0 16 16"><path d="M2 5l6-3 6 3v6l-6 3-6-3z M2 5l6 3 6-3 M8 8v6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 16 16"><rect x="3.5" y="7" width="9" height="6.5" rx="1" fill="currentColor"/><path d="M5.5 7V5.2a2.5 2.5 0 0 1 5 0V7" fill="none" stroke="currentColor" stroke-width="1.4"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-x" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+</svg>
+
+<div id="app">
+  <header id="bar">
+    <div class="brand"><svg class="i" style="width:20px;height:20px"><use href="#i-Component"/></svg>Gears bundle maker</div>
+    <label class="field"><span>Bundle</span><input id="bundleName" type="text" spellcheck="false" aria-label="Bundle name"></label>
+    <div class="group">
+      <button class="btn" id="btnOpen" title="Open an existing bundle folder to edit it">Open bundle</button>
+      <button class="btn" id="btnAddRef" title="Show another bundle's assets here without copying them into this bundle">Add reference bundle</button>
+    </div>
+    <div class="group">
+      <button class="btn" id="btnImport" title="Import textures, models, shaders, materials, scenes or scripts">Import assets</button>
+      <div class="menu" id="menuNew">
+        <button class="btn" id="btnNew" aria-haspopup="true">New</button>
+        <div class="menu-pop" id="menuNewPop"></div>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn" id="btnReview" title="Problems, output files and bundle file">Review <span class="badge ok" id="probBadge">0</span></button>
+    <button class="btn primary" id="btnExportFolder">Export to folder</button>
+    <button class="btn" id="btnExportZip">Download .zip</button>
+  </header>
+
+  <section id="left">
+    <div id="viewer">
+      <div id="viewbar"><div id="viewTitle">No asset selected</div><div id="viewTools"></div></div>
+      <div id="viewport" class="mode-empty">
+        <canvas id="gl"></canvas><canvas id="c2d"></canvas>
+        <div id="textView"></div>
+        <div id="viewMsg"><div>Select an asset to preview it here.<br>Textures and models show as images and 3D, materials show on a sphere.</div></div>
+        <div id="viewInfo"></div>
+      </div>
+    </div>
+    <div id="splitH" class="split" role="separator" aria-orientation="horizontal"></div>
+    <div id="assets">
+      <div class="a-bar">
+        <div class="crumbs" id="crumbs"></div>
+        <button class="icon-btn" id="btnNewFolder" title="New folder in this folder"><svg class="i"><use href="#i-folder"/></svg><svg class="i" style="width:10px;height:10px;margin-left:-3px"><use href="#i-plus"/></svg></button>
+        <button class="icon-btn" id="btnRenFolder" title="Rename this folder">Rename</button>
+        <button class="icon-btn" id="btnDelFolder" title="Delete this folder">Delete folder</button>
+        <input type="search" id="search" placeholder="Search assets" aria-label="Search assets">
+      </div>
+      <div class="a-body"><div id="tree" role="tree"></div><div id="tiles"></div></div>
+    </div>
+  </section>
+
+  <div id="splitR" class="split" role="separator" aria-orientation="vertical"></div>
+  <aside id="inspector" aria-label="Settings"></aside>
+</div>
+
+<dialog id="review">
+  <div class="dlg-head">
+    <button class="tab on" data-tab="problems">Problems</button>
+    <button class="tab" data-tab="output">Output files</button>
+    <button class="tab" data-tab="nlabf">Bundle.nlabf</button>
+    <span class="spacer"></span>
+    <button class="icon-btn" id="btnCloseReview" title="Close"><svg class="i"><use href="#i-x"/></svg></button>
+  </div>
+  <div id="reviewBody"></div>
+</dialog>
+
+<input type="file" id="fileInput" multiple hidden>
+<input type="file" id="dirInput" webkitdirectory hidden>
+<div id="dropHint">Drop files to import them</div>
+<div id="toast" role="status"></div>
+<script>
+'use strict';
+/* ==========================================================================
+   Gears bundle maker
+   Writes the bundle folder the Gears AssetBundleLoader reads:
+     Bundle.nlabf, Metadata/<folders>/<Type>_<name>.nlam, Assets/<folders>/<file>
+   ========================================================================== */
+
+const $ = (s, r) => (r || document).querySelector(s);
+
+function h(tag, props) {
+  const e = document.createElement(tag);
+  if (props) for (const k in props) {
+    const v = props[k];
+    if (v === false || v == null) continue;
+    if (k === 'class') e.className = v;
+    else if (k === 'text') e.textContent = v;
+    else if (k === 'value') e.value = v;
+    else if (k === 'checked') e.checked = !!v;
+    else if (k === 'disabled') e.disabled = !!v;
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v === true ? '' : String(v));
+  }
+  for (let i = 2; i < arguments.length; i++) appendKid(e, arguments[i]);
+  return e;
+}
+function appendKid(e, c) {
+  if (c == null || c === false) return;
+  if (Array.isArray(c)) { for (const x of c) appendKid(e, x); return; }
+  e.append(c.nodeType ? c : document.createTextNode(String(c)));
+}
+function icon(name, cls) {
+  const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  s.setAttribute('class', 'i' + (cls ? ' ' + cls : ''));
+  const u = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+  u.setAttribute('href', '#i-' + name);
+  s.appendChild(u);
+  return s;
+}
+
+// ---------- asset types ----------
+const TYPE = {
+  Texture:   { label: 'Texture',    plural: 'Textures',    folder: 'Textures',    exts: ['png', 'jpg', 'jpeg', 'bmp', 'tga', 'gif'] },
+  Model:     { label: 'Model',      plural: 'Models',      folder: 'Models',      exts: ['obj'] },
+  Shader:    { label: 'Shader',     plural: 'Shaders',     folder: 'Shaders',     exts: ['nlsf'] },
+  RawShader: { label: 'Raw shader', plural: 'Raw Shaders', folder: 'Raw Shaders', exts: ['shader', 'glsl', 'vert', 'frag', 'geom', 'comp'], fixedExt: 'shader' },
+  Material:  { label: 'Material',   plural: 'Materials',   folder: 'Materials',   exts: ['nlmf'] },
+  Scene:     { label: 'Scene',      plural: 'Scenes',      folder: 'Scenes',      exts: ['json'] },
+  Component: { label: 'Component',  plural: 'Components',  folder: 'Components',  exts: ['cs'] }
+};
+const TYPE_ORDER = ['Texture', 'Model', 'Material', 'Shader', 'RawShader', 'Scene', 'Component'];
+const BINARY = { Texture: true };
+
+// values the engine's TextureDataValue enum accepts, per setting
+const ENUM = {
+  wrap:   ['Repeat', 'MirroredRepeat', 'ClampToEdge', 'ClampToBorder'],
+  filter: ['Nearest', 'Linear'],
+  mipmap: ['NearestMipmapNearest', 'NearestMipmapLinear', 'LinearMipmapNearest', 'LinearMipmapLinear'],
+  pixel:  ['Rgba', 'Rgb', 'Rg', 'Bgr', 'Bgra', 'Red', 'Green', 'Blue', 'Alpha'],
+  target: ['Texture2D', 'TextureCubeMap'],
+  comps:  ['RedGreenBlueAlpha', 'RedGreenBlue', 'GreyAlpha', 'Grey', 'Default']
+};
+// .nlmf key written for each per-texture setting (the keys AssetLoader.ExtractTextureData reads)
+const TEXKEYS = [['TextureWrap', 'wrap'], ['TextureFilter', 'filter'], ['Mipmap', 'mipmap'], ['PixelFormat', 'pixel'], ['TextureTarget', 'target'], ['ColorComponents', 'comps']];
+// older sample materials used these names; they are read as the right ones
+const LEGACY_TEXKEYS = { TextureWarp: 'wrap', TexturePixel: 'pixel', TextureType: 'target', TextureMipmap: 'mipmap' };
+const SEMANTICS = ['albedo', 'normal', 'roughness', 'metallic', 'emission', 'ao', 'height'];
+
+// ---------- state ----------
+const S = {
+  bundle: { name: 'New bundle', uuid: uuid4(), refList: [] },   // refList: [{name, uuid}]
+  assets: [],
+  folders: new Set(),          // explicit folder paths in this bundle
+  refs: [],                    // loaded reference bundles {uuid,name,assets,folders:Set}
+  sel: null,
+  nav: { ref: null, path: '' },
+  open: new Set(['@']),        // expanded tree nodes
+  filter: '',
+  dirty: false
+};
+
+// ---------- small helpers ----------
+// Algorithm: UUID version 4 (random), RFC 4122
+function uuid4() {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80;
+  const x = Array.from(b, v => v.toString(16).padStart(2, '0'));
+  return x.slice(0, 4).join('') + '-' + x.slice(4, 6).join('') + '-' + x.slice(6, 8).join('') + '-' + x.slice(8, 10).join('') + '-' + x.slice(10).join('');
+}
+const cleanName = s => String(s == null ? '' : s).replace(/[\\\/:*?"<>|\u0000-\u001f]/g, '_').replace(/^\.+/, '').trim();
+const stemOf = f => { const i = f.lastIndexOf('.'); return i > 0 ? f.slice(0, i) : f; };
+const extOf = f => { const i = f.lastIndexOf('.'); return i > 0 ? f.slice(i + 1).toLowerCase() : ''; };
+const r6 = v => { const n = Number(v); return Number.isFinite(n) ? parseFloat(n.toFixed(6)) : 0; };
+const fmtSize = n => n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
+const json = o => JSON.stringify(o, null, 2) + '\n';
+const enc = new TextEncoder();
+const dec = new TextDecoder('utf-8');
+const decodeText = bytes => dec.decode(bytes).replace(/^\uFEFF/, '');
+const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
+const numOr = (v, d) => { const n = Number(v); return v != null && Number.isFinite(n) ? n : d; };
+const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', bmp: 'image/bmp', gif: 'image/gif', tga: 'image/x-tga' };
+
+function readBytes(file) {
+  if (file.arrayBuffer) return file.arrayBuffer().then(b => new Uint8Array(b));
+  return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(new Uint8Array(r.result)); r.onerror = rej; r.readAsArrayBuffer(file); });
+}
+
+let toastTimer = 0;
+function toast(msg, isErr) {
+  const t = $('#toast');
+  t.textContent = msg; t.className = 'show' + (isErr ? ' err' : '');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.className = ''; }, isErr ? 6500 : 3200);
+}
+
+// ---------- asset paths ----------
+const allAssets = () => S.assets.concat(...S.refs.map(r => r.assets));
+const hasFile = a => !(a.type === 'Component' && a.text == null);
+const fileName = a => a.name + '.' + a.ext;
+const assetRel = a => hasFile(a) ? (a.folder ? a.folder + '/' : '') + fileName(a) : '';
+const metaRel = a => (a.folder ? a.folder + '/' : '') + a.type + '_' + a.name + '.nlam';
+const locationOf = a => hasFile(a) ? '/' + assetRel(a) : '';
+const joinPath = (p, n) => p ? p + '/' + n : n;
+const parentPath = p => { const i = p.lastIndexOf('/'); return i < 0 ? '' : p.slice(0, i); };
+
+function findAsset(type, name) {
+  for (const a of S.assets) if (a.type === type && a.name === name) return a;
+  for (const r of S.refs) for (const a of r.assets) if (a.type === type && a.name === name) return a;
+  return null;
+}
+function uniqueName(type, base, except) {
+  base = cleanName(base) || TYPE[type].label;
+  let n = base, i = 2;
+  while (S.assets.some(a => a !== except && a.type === type && a.name === n)) n = base + ' ' + (i++);
+  return n;
+}
+function ensureFolder(path) {
+  for (let p = path; p; p = parentPath(p)) S.folders.add(p);
+}
+function allFolders() {
+  const s = new Set(S.folders);
+  for (const a of S.assets) for (let p = a.folder; p; p = parentPath(p)) s.add(p);
+  return s;
+}
+function refFolders(r) {
+  const s = new Set(r.folders);
+  for (const a of r.assets) for (let p = a.folder; p; p = parentPath(p)) s.add(p);
+  return s;
+}
+
+// ---------- Wavefront OBJ ----------
+// Algorithm: Wavefront OBJ line parser with triangle-fan triangulation.
+// Output vertices are interleaved: position(3) normal(3) uv(2); a new sub-mesh starts at each usemtl.
+function parseOBJ(text) {
+  const P = [], T = [], N = [], out = [], subs = [], mats = [];
+  const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+  let cur = null, faces = 0, tris = 0;
+  const start = name => { cur = { name, first: out.length / 8, count: 0 }; subs.push(cur); };
+  start('');
+  const idx = (tok, len) => { const n = parseInt(tok, 10); if (!n) return -1; const i = n > 0 ? n - 1 : len + n; return i >= 0 && i < len ? i : -1; };
+  const emit = (a, b, c) => {
+    const pa = a[0] * 3, pb = b[0] * 3, pc = c[0] * 3;
+    let fx = 0, fy = 0, fz = 0;
+    if (a[2] < 0 || b[2] < 0 || c[2] < 0) {            // no normals in the file: flat face normal
+      const ux = P[pb] - P[pa], uy = P[pb + 1] - P[pa + 1], uz = P[pb + 2] - P[pa + 2];
+      const vx = P[pc] - P[pa], vy = P[pc + 1] - P[pa + 1], vz = P[pc + 2] - P[pa + 2];
+      fx = uy * vz - uz * vy; fy = uz * vx - ux * vz; fz = ux * vy - uy * vx;
+      const l = Math.hypot(fx, fy, fz) || 1; fx /= l; fy /= l; fz /= l;
+    }
+    for (const v of [a, b, c]) {
+      const p = v[0] * 3;
+      out.push(P[p], P[p + 1], P[p + 2]);
+      if (v[2] >= 0) out.push(N[v[2] * 3], N[v[2] * 3 + 1], N[v[2] * 3 + 2]); else out.push(fx, fy, fz);
+      if (v[1] >= 0) out.push(T[v[1] * 2], T[v[1] * 2 + 1]); else out.push(0, 0);
+      for (let k = 0; k < 3; k++) { if (P[p + k] < mn[k]) mn[k] = P[p + k]; if (P[p + k] > mx[k]) mx[k] = P[p + k]; }
+    }
+    cur.count += 3; tris++;
+  };
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.charCodeAt(0) === 35) continue;
+    const sp = line.search(/\s/);
+    const kw = sp < 0 ? line : line.slice(0, sp);
+    const rest = sp < 0 ? '' : line.slice(sp + 1).trim();
+    if (kw === 'v') { const t = rest.split(/\s+/); P.push(+t[0] || 0, +t[1] || 0, +t[2] || 0); }
+    else if (kw === 'vt') { const t = rest.split(/\s+/); T.push(+t[0] || 0, +t[1] || 0); }
+    else if (kw === 'vn') { const t = rest.split(/\s+/); N.push(+t[0] || 0, +t[1] || 0, +t[2] || 0); }
+    else if (kw === 'usemtl') { if (!mats.includes(rest)) mats.push(rest); start(rest); }
+    else if (kw === 'f') {
+      const vs = [];
+      for (const tok of rest.split(/\s+/)) {
+        const q = tok.split('/');
+        const pi = idx(q[0], P.length / 3); if (pi < 0) continue;
+        vs.push([pi, q[1] ? idx(q[1], T.length / 2) : -1, q[2] ? idx(q[2], N.length / 3) : -1]);
+      }
+      if (vs.length < 3) continue;
+      faces++;
+      for (let i = 1; i < vs.length - 1; i++) emit(vs[0], vs[i], vs[i + 1]);
+    }
+  }
+  const keep = subs.filter(s => s.count > 0);
+  if (!isFinite(mn[0])) { mn[0] = mn[1] = mn[2] = -1; mx[0] = mx[1] = mx[2] = 1; }
+  return { data: new Float32Array(out), subs: keep, mats, min: mn, max: mx, stats: { v: P.length / 3, vt: T.length / 2, vn: N.length / 3, faces, tris } };
+}
+
+// ---------- material (.nlmf) ----------
+function defMat(shaderName) {
+  return { ShaderName: shaderName || 'LitShaderURP', SeeThroughType: 'Opaque', CullMode: 'CCW', BaseColor: [1, 1, 1, 1], EmissionColor: [0, 0, 0, 0], Metallic: 0, Roughness: 0.5, ReceiveShadows: true, CastShadows: true, ZWrite: true, Textures: [], rest: {} };
+}
+function defSlot(textureName, semantic) {
+  return { TextureName: textureName || '', SemanticName: semantic || 'albedo', scale: [1, 1], offset: [0, 0], wrap: '', filter: '', mipmap: '', pixel: '', target: '', comps: '', rest: {} };
+}
+const vec4 = (o, d) => isObj(o) ? [numOr(o.X, d[0]), numOr(o.Y, d[1]), numOr(o.Z, d[2]), numOr(o.W, d[3])] : d.slice();
+const vec2 = (o, d) => isObj(o) ? [numOr(o.X, d[0]), numOr(o.Y, d[1])] : d.slice();
+const xyzw = v => ({ X: r6(v[0]), Y: r6(v[1]), Z: r6(v[2]), W: r6(v[3]) });
+function pickRest(o, known) { const r = {}; for (const k in o) if (!known.includes(k)) r[k] = o[k]; return r; }
+
+function parseMat(text) {
+  const j = JSON.parse(text);
+  if (!isObj(j)) throw new Error('Material file is not a JSON object');
+  const m = defMat();
+  m.ShaderName = typeof j.ShaderName === 'string' ? j.ShaderName : m.ShaderName;
+  m.SeeThroughType = j.SeeThroughType === 'Transparent' ? 'Transparent' : 'Opaque';
+  m.CullMode = ['CCW', 'CW', 'Neither'].includes(j.CullMode) ? j.CullMode : 'CCW';
+  m.BaseColor = vec4(j.BaseColor, [1, 1, 1, 1]);
+  m.EmissionColor = vec4(j.EmissionColor, [0, 0, 0, 0]);
+  m.Metallic = numOr(j.Metallic, 0); m.Roughness = numOr(j.Roughness, 0);
+  for (const k of ['ReceiveShadows', 'CastShadows', 'ZWrite']) m[k] = typeof j[k] === 'boolean' ? j[k] : true;
+  let migrated = false;
+  for (const t of Array.isArray(j.Textures) ? j.Textures : []) {
+    if (!isObj(t)) continue;
+    const s = defSlot(typeof t.TextureName === 'string' ? t.TextureName : '', typeof t.SemanticName === 'string' ? t.SemanticName : '');
+    s.scale = vec2(t.TextureScale, [1, 1]); s.offset = vec2(t.TextureOffset, [0, 0]);
+    for (const [key, f] of TEXKEYS) if (typeof t[key] === 'string') s[f] = t[key];
+    for (const key in LEGACY_TEXKEYS) if (typeof t[key] === 'string') { if (!s[LEGACY_TEXKEYS[key]]) s[LEGACY_TEXKEYS[key]] = t[key]; migrated = true; }
+    s.rest = pickRest(t, ['TextureName', 'SemanticName', 'TextureScale', 'TextureOffset'].concat(TEXKEYS.map(k => k[0]), Object.keys(LEGACY_TEXKEYS)));
+    m.Textures.push(s);
+  }
+  m.rest = pickRest(j, ['Name', 'ShaderName', 'SeeThroughType', 'CullMode', 'BaseColor', 'EmissionColor', 'Metallic', 'Roughness', 'ReceiveShadows', 'CastShadows', 'ZWrite', 'Textures']);
+  m.migrated = migrated;
+  return m;
+}
+function matToJson(a) {
+  const m = a.mat;
+  const o = {
+    Name: a.name, ShaderName: m.ShaderName, SeeThroughType: m.SeeThroughType,
+    BaseColor: xyzw(m.BaseColor), EmissionColor: xyzw(m.EmissionColor), CullMode: m.CullMode,
+    Metallic: r6(m.Metallic), Roughness: r6(m.Roughness),
+    ReceiveShadows: !!m.ReceiveShadows, CastShadows: !!m.CastShadows, ZWrite: !!m.ZWrite,
+    Textures: m.Textures.map(t => {
+      const x = { TextureName: t.TextureName, SemanticName: t.SemanticName, TextureScale: { X: r6(t.scale[0]), Y: r6(t.scale[1]) }, TextureOffset: { X: r6(t.offset[0]), Y: r6(t.offset[1]) } };
+      for (const [key, f] of TEXKEYS) if (t[f]) x[key] = t[f];
+      return Object.assign(x, t.rest);
+    })
+  };
+  return json(Object.assign(o, m.rest));
+}
+
+// ---------- shader definition (.nlsf) ----------
+function defShader() { return { Drawable: true, Vertex: '', Fragment: '', Geometry: '', Compute: '', rest: {} }; }
+function parseShader(text) {
+  const j = JSON.parse(text);
+  if (!isObj(j)) throw new Error('Shader file is not a JSON object');
+  const s = defShader();
+  s.Drawable = typeof j.DrawableShader === 'boolean' ? j.DrawableShader : true;
+  for (const sub of Array.isArray(j.SubShaders) ? j.SubShaders : []) {
+    if (!isObj(sub)) continue;
+    for (const k of ['Vertex', 'Fragment', 'Geometry', 'Compute']) if (typeof sub[k] === 'string') s[k] = sub[k];
+  }
+  s.rest = pickRest(j, ['Name', 'DrawableShader', 'SubShaders']);
+  return s;
+}
+function shToJson(a) {
+  const s = a.sh, sub = {};
+  if (s.Drawable) { for (const k of ['Vertex', 'Fragment', 'Geometry']) if (s[k]) sub[k] = s[k]; }
+  else if (s.Compute) sub.Compute = s.Compute;
+  return json(Object.assign({ Name: a.name, DrawableShader: !!s.Drawable, SubShaders: [sub] }, s.rest));
+}
+
+// ---------- asset text / bytes / meta ----------
+function assetText(a) {
+  if (a.type === 'Material') return matToJson(a);
+  if (a.type === 'Shader') return shToJson(a);
+  return a.text == null ? '' : a.text;
+}
+function assetBytes(a) { return a.type === 'Texture' ? (a.bytes || new Uint8Array(0)) : enc.encode(assetText(a)); }
+function nlamObj(a) {
+  const o = { Type: a.type, Location: locationOf(a), UUID: a.id, Name: a.name };
+  if (a.extra.length) o.Extra = a.extra.map(e => ({ Key: e.k, Value: e.v }));
+  return o;
+}
+function nlabfObj() {
+  const o = { Name: S.bundle.name, Asset: S.assets.map(a => a.id), UUID: S.bundle.uuid };
+  if (S.bundle.refList.length) o.References = S.bundle.refList.map(r => ({ Name: r.name, UUID: r.uuid }));
+  return o;
+}
+function buildFiles() {
+  const files = [{ path: 'Bundle.nlabf', data: enc.encode(json(nlabfObj())) }];
+  for (const a of S.assets) {
+    files.push({ path: 'Metadata/' + metaRel(a), data: enc.encode(json(nlamObj(a))) });
+    if (hasFile(a)) files.push({ path: 'Assets/' + assetRel(a), data: assetBytes(a) });
+  }
+  return files;
+}
+
+// ---------- ZIP (stored) ----------
+// Algorithm: PKWARE ZIP container, "stored" method (no compression), CRC-32 (IEEE 802.3, table driven).
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); t[n] = c >>> 0; }
+  return t;
+})();
+function crc32(buf) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function makeZipBytes(files, prefix) {
+  const parts = [], central = [];
+  let offset = 0;
+  const d = new Date();
+  const dosTime = ((d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1)) & 0xFFFF;
+  const dosDate = (((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate()) & 0xFFFF;
+  for (const f of files) {
+    const name = enc.encode((prefix || '') + f.path), crc = crc32(f.data), size = f.data.length;
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint16(8, 0, true);
+    lh.setUint16(10, dosTime, true); lh.setUint16(12, dosDate, true); lh.setUint32(14, crc, true);
+    lh.setUint32(18, size, true); lh.setUint32(22, size, true); lh.setUint16(26, name.length, true); lh.setUint16(28, 0, true);
+    parts.push(new Uint8Array(lh.buffer), name, f.data);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true); ch.setUint16(10, 0, true);
+    ch.setUint16(12, dosTime, true); ch.setUint16(14, dosDate, true); ch.setUint32(16, crc, true);
+    ch.setUint32(20, size, true); ch.setUint32(24, size, true); ch.setUint16(28, name.length, true);
+    ch.setUint32(42, offset, true);
+    central.push(new Uint8Array(ch.buffer), name);
+    offset += 30 + name.length + size;
+  }
+  let cd = 0; for (const c of central) cd += c.length;
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+  end.setUint32(12, cd, true); end.setUint32(16, offset, true);
+  const all = parts.concat(central, [new Uint8Array(end.buffer)]);
+  let total = 0; for (const p of all) total += p.length;
+  const out = new Uint8Array(total); let o = 0;
+  for (const p of all) { out.set(p, o); o += p.length; }
+  return out;
+}
+
+/* ==========================================================================
+   Asset operations, problems, bundle IO
+   ========================================================================== */
+function newAsset(o) {
+  return Object.assign({ id: uuid4(), type: '', name: '', ext: '', folder: '', bytes: null, text: null, mat: null, sh: null, extra: [], ref: null }, o);
+}
+const isRef = a => !!a.ref;
+const defaultFolder = type => (S.nav.ref == null && S.nav.path) ? S.nav.path : TYPE[type].folder;
+
+function addAsset(a) {
+  a.name = uniqueName(a.type, a.name, null);
+  S.assets.push(a); ensureFolder(a.folder); S.dirty = true;
+  return a;
+}
+function cloneAsset(a) {
+  const c = Object.assign({}, a, { id: uuid4(), ref: null, extra: a.extra.map(e => ({ k: e.k, v: e.v })),
+    mat: a.mat ? JSON.parse(JSON.stringify(a.mat)) : null, sh: a.sh ? JSON.parse(JSON.stringify(a.sh)) : null });
+  for (const k of Object.keys(c)) if (k[0] === '_') delete c[k];
+  return c;
+}
+function typeForExt(ext) { for (const t of TYPE_ORDER) if (TYPE[t].exts.includes(ext)) return t; return null; }
+
+function fillAsset(a, bytes, warnings) {
+  try {
+    if (a.type === 'Texture') { a.bytes = bytes; return; }
+    const t = decodeText(bytes);
+    if (a.type === 'Material') a.mat = parseMat(t);
+    else if (a.type === 'Shader') a.sh = parseShader(t);
+    else a.text = t;
+  } catch (e) {
+    if (warnings) warnings.push(a.type + ' "' + a.name + '": ' + e.message);
+    if (a.type === 'Material') a.mat = defMat(); else if (a.type === 'Shader') a.sh = defShader(); else a.text = '';
+  }
+}
+
+async function importFile(file, folderOverride) {
+  const ext = extOf(file.name), type = typeForExt(ext);
+  if (!type) throw new Error('"' + file.name + '" is not a supported file type.');
+  const bytes = await readBytes(file);
+  const a = newAsset({ type, name: stemOf(file.name), ext: TYPE[type].fixedExt || ext, folder: folderOverride != null ? folderOverride : defaultFolder(type) });
+  const warnings = [];
+  fillAsset(a, bytes, warnings);
+  if (warnings.length) throw new Error(warnings[0]);
+  return addAsset(a);
+}
+async function importFiles(list, folderOverride) {
+  let first = null, n = 0;
+  for (const f of Array.from(list)) {
+    try { const a = await importFile(f, folderOverride); if (!first) first = a; n++; }
+    catch (e) { toast(e.message, true); }
+  }
+  if (first) { S.nav = { ref: null, path: first.folder }; select(first); toast('Imported ' + n + ' asset' + (n === 1 ? '' : 's') + '.'); }
+  refreshAll();
+}
+
+function newMaterial() {
+  const sh = S.assets.find(a => a.type === 'Shader');
+  const a = addAsset(newAsset({ type: 'Material', name: 'New material', ext: 'nlmf', folder: defaultFolder('Material'), mat: defMat(sh ? sh.name : '') }));
+  select(a); refreshAll();
+}
+function newShader() {
+  const a = addAsset(newAsset({ type: 'Shader', name: 'New shader', ext: 'nlsf', folder: defaultFolder('Shader'), sh: defShader() }));
+  const raws = S.assets.filter(x => x.type === 'RawShader');
+  if (raws[0]) a.sh.Vertex = raws[0].name;
+  if (raws[1]) a.sh.Fragment = raws[1].name;
+  select(a); refreshAll();
+}
+function newComponent() {
+  const a = addAsset(newAsset({ type: 'Component', name: 'NewComponent', ext: 'cs', folder: defaultFolder('Component'), text: null }));
+  select(a); refreshAll();
+}
+function newScene() {
+  const a = addAsset(newAsset({ type: 'Scene', name: 'New scene', ext: 'json', folder: defaultFolder('Scene'), text: json({ Name: 'New scene', Root: {} }) }));
+  select(a); refreshAll();
+}
+
+function renameAsset(a, want) {
+  const old = a.name, nn = uniqueName(a.type, want, a);
+  if (nn === old) return old;
+  a.name = nn;
+  for (const m of S.assets) {                        // keep references pointing at the renamed asset
+    if (a.type === 'Texture' && m.mat) for (const t of m.mat.Textures) if (t.TextureName === old) t.TextureName = nn;
+    if (a.type === 'Shader' && m.mat && m.mat.ShaderName === old) m.mat.ShaderName = nn;
+    if (a.type === 'RawShader' && m.sh) for (const k of ['Vertex', 'Fragment', 'Geometry', 'Compute']) if (m.sh[k] === old) m.sh[k] = nn;
+  }
+  S.dirty = true; return nn;
+}
+function moveAsset(a, folder) { a.folder = folder; ensureFolder(folder); S.dirty = true; }
+function deleteAsset(a) {
+  const i = S.assets.indexOf(a); if (i < 0) return;
+  S.assets.splice(i, 1); disposeAssetGL(a); S.dirty = true;
+  if (S.sel === a) select(null);
+}
+function newFolder(parent, name) {
+  name = cleanName(name); if (!name) return null;
+  const p = joinPath(parent, name); S.folders.add(p); S.dirty = true; return p;
+}
+function renameFolder(path, name) {
+  name = cleanName(name); if (!name) return null;
+  const np = joinPath(parentPath(path), name);
+  if (np === path) return path;
+  if (allFolders().has(np)) { toast('A folder named "' + name + '" already exists here.', true); return null; }
+  const re = p => p === path ? np : (p.startsWith(path + '/') ? np + p.slice(path.length) : p);
+  S.folders = new Set(Array.from(S.folders, re));
+  for (const a of S.assets) a.folder = re(a.folder);
+  S.nav.path = re(S.nav.path); S.dirty = true; return np;
+}
+function deleteFolder(path) {
+  const inside = p => p === path || p.startsWith(path + '/');
+  const victims = S.assets.filter(a => inside(a.folder));
+  if (victims.length && !confirm('Delete folder "' + path + '" and the ' + victims.length + ' asset(s) in it?')) return false;
+  for (const a of victims) deleteAsset(a);
+  S.folders = new Set(Array.from(S.folders).filter(p => !inside(p)));
+  S.nav = { ref: null, path: parentPath(path) }; S.dirty = true; return true;
+}
+
+// ---------- image decode ----------
+function ensureImage(a) {
+  if (a._imgP) return a._imgP;
+  a._imgP = (async () => {
+    try {
+      const bmp = await createImageBitmap(new Blob([a.bytes], { type: MIME[a.ext] || 'image/png' }));
+      a._img = bmp; a._info = { w: bmp.width, h: bmp.height };
+    } catch (e) { a._imgFail = true; }
+    scheduleUI();
+    return a._img || null;
+  })();
+  return a._imgP;
+}
+const getObj = a => a._obj || (a._obj = parseOBJ(a.text || ''));
+
+// ---------- problems ----------
+function computeProblems() {
+  const P = [], add = (sev, a, msg) => P.push({ sev, a, msg });
+  const nameCount = new Map(), idCount = new Map(), relCount = new Map();
+  const bump = (m, k) => m.set(k, (m.get(k) || 0) + 1);
+  for (const a of S.assets) {
+    bump(nameCount, a.type + '|' + a.name); bump(idCount, a.id);
+    if (hasFile(a)) bump(relCount, assetRel(a).toLowerCase());
+  }
+  for (const a of S.assets) {
+    const L = TYPE[a.type].label;
+    if (!a.name) add('err', a, 'The name is empty.');
+    if (nameCount.get(a.type + '|' + a.name) > 1) add('err', a, 'Another ' + L.toLowerCase() + ' in this bundle has the same name. The engine finds assets by name.');
+    if (idCount.get(a.id) > 1) add('err', a, 'Another asset has the same UUID.');
+    if (hasFile(a) && relCount.get(assetRel(a).toLowerCase()) > 1) add('err', a, 'Another asset is written to the same file: ' + assetRel(a));
+    for (const r of S.refs) if (r.assets.some(x => x.type === a.type && x.name === a.name)) add('warn', a, 'The reference bundle "' + r.name + '" also has a ' + L.toLowerCase() + ' with this name.');
+    if (a.type === 'Texture') {
+      if (!a.bytes || !a.bytes.length) add('err', a, 'The image file is empty.');
+      else if (a._imgFail) add('warn', a, 'The browser cannot decode this image, so there is no preview. The file is still exported.');
+    } else if (a.type === 'Model') {
+      const o = getObj(a);
+      if (!o.stats.tris) add('err', a, 'No faces found in this OBJ file.');
+      for (const m of o.mats) if (!findAsset('Material', m)) add('warn', a, 'The material "' + m + '" (usemtl) is not in this bundle or its references. The engine uses its Missing material unless another loaded bundle has it.');
+    } else if (a.type === 'Material') {
+      if (!a.mat.ShaderName) add('warn', a, 'No shader is set.');
+      else if (!findAsset('Shader', a.mat.ShaderName)) add('warn', a, 'The shader "' + a.mat.ShaderName + '" is not in this bundle or its references. This is fine if the engine already has it.');
+      a.mat.Textures.forEach((t, i) => {
+        if (!t.TextureName) add('warn', a, 'Texture slot ' + (i + 1) + ' has no texture.');
+        else if (!findAsset('Texture', t.TextureName)) add('warn', a, 'The texture "' + t.TextureName + '" is not in this bundle or its references. This is fine if another loaded bundle has it.');
+      });
+    } else if (a.type === 'Shader') {
+      const stages = a.sh.Drawable ? ['Vertex', 'Fragment', 'Geometry'] : ['Compute'];
+      if (a.sh.Drawable) { if (!a.sh.Vertex) add('err', a, 'A drawable shader needs a vertex stage.'); if (!a.sh.Fragment) add('err', a, 'A drawable shader needs a fragment stage.'); }
+      else if (!a.sh.Compute) add('err', a, 'A compute shader needs a compute stage.');
+      for (const k of stages) if (a.sh[k] && !findAsset('RawShader', a.sh[k])) add('warn', a, 'The ' + k.toLowerCase() + ' source "' + a.sh[k] + '" is not in this bundle or its references. The engine then looks in its own Raw Shaders folder.');
+    } else if (a.type === 'Scene') {
+      try { const j = JSON.parse(a.text || ''); if (!isObj(j) || !isObj(j.Root)) add('warn', a, 'The scene has no "Root" object.'); }
+      catch (e) { add('err', a, 'The scene is not valid JSON: ' + e.message); }
+    } else if (a.type === 'Component') {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(a.name)) add('warn', a, 'The name should match the C# class name: letters, digits and underscore only.');
+    } else if (a.type === 'RawShader') {
+      if (!(a.text || '').trim()) add('warn', a, 'The shader source is empty.');
+    }
+  }
+  if (!S.bundle.name.trim()) add('warn', null, 'The bundle has no name.');
+  if (!S.assets.length) add('warn', null, 'The bundle has no assets yet.');
+  return P;
+}
+
+// ---------- bundle IO ----------
+async function walkDir(dir, prefix, out) {
+  for await (const [name, handle] of dir.entries()) {
+    if (handle.kind === 'file') out.push({ path: prefix + name, file: await handle.getFile() });
+    else await walkDir(handle, prefix + name + '/', out);
+  }
+}
+async function pickBundleFiles() {
+  if (window.showDirectoryPicker) {
+    try {
+      const dir = await window.showDirectoryPicker();
+      const files = []; await walkDir(dir, '', files);
+      return { name: dir.name, files };
+    } catch (e) { if (e && e.name === 'AbortError') return null; throw e; }
+  }
+  return new Promise(resolve => {
+    const inp = $('#dirInput'); inp.value = '';
+    inp.onchange = () => {
+      const list = Array.from(inp.files);
+      if (!list.length) return resolve(null);
+      const root = list[0].webkitRelativePath.split('/')[0];
+      resolve({ name: root, files: list.map(f => ({ path: f.webkitRelativePath.split('/').slice(1).join('/'), file: f })) });
+    };
+    inp.click();
+  });
+}
+
+// Reads Bundle.nlabf, every Metadata/**.nlam and the asset file each one points at.
+async function parseBundle(files, dirName) {
+  const byLower = new Map(), warnings = [];
+  for (const f of files) byLower.set(f.path.toLowerCase(), f);
+  let nlabf = null;
+  const nb = byLower.get('bundle.nlabf');
+  if (nb) { try { nlabf = JSON.parse(decodeText(await readBytes(nb.file))); } catch (e) { warnings.push('Bundle.nlabf is not valid JSON.'); } }
+  else warnings.push('No Bundle.nlabf found. Is this a bundle folder?');
+  const bundle = {
+    name: (isObj(nlabf) && typeof nlabf.Name === 'string' && nlabf.Name) || dirName || 'Bundle',
+    uuid: (isObj(nlabf) && typeof nlabf.UUID === 'string' && nlabf.UUID) || uuid4(), refList: []
+  };
+  if (isObj(nlabf) && Array.isArray(nlabf.References)) for (const r of nlabf.References) if (isObj(r)) bundle.refList.push({ name: String(r.Name || ''), uuid: String(r.UUID || '') });
+  const assets = [], folders = new Set();
+  const metas = files.filter(f => /^metadata\//i.test(f.path) && /\.nlam$/i.test(f.path)).sort((a, b) => a.path.localeCompare(b.path));
+  for (const mf of metas) {
+    let m;
+    try { m = JSON.parse(decodeText(await readBytes(mf.file))); } catch (e) { warnings.push(mf.path + ' is not valid JSON, skipped.'); continue; }
+    if (!isObj(m) || !TYPE[m.Type] || typeof m.Name !== 'string') { warnings.push(mf.path + ' has an unknown Type or no Name, skipped.'); continue; }
+    const type = m.Type;
+    const loc = typeof m.Location === 'string' ? m.Location.replace(/\\/g, '/').replace(/^\/+/, '') : '';
+    const a = newAsset({ type, name: cleanName(m.Name) || TYPE[type].label });
+    if (typeof m.UUID === 'string' && m.UUID) a.id = m.UUID;
+    if (Array.isArray(m.Extra)) for (const e of m.Extra) if (isObj(e) && typeof e.Key === 'string') a.extra.push({ k: e.Key, v: (typeof e.Value === 'number' || typeof e.Value === 'boolean') ? e.Value : String(e.Value == null ? '' : e.Value) });
+    if (loc) {
+      a.ext = extOf(loc) || TYPE[type].exts[0]; a.folder = parentPath(loc);
+      const af = byLower.get(('assets/' + loc).toLowerCase());
+      if (af) fillAsset(a, await readBytes(af.file), warnings);
+      else { warnings.push(type + ' "' + a.name + '": asset file Assets/' + loc + ' is missing.'); fillAsset(a, new Uint8Array(0), null); }
+    } else {
+      a.ext = TYPE[type].exts[0]; a.folder = TYPE[type].folder;
+      if (type === 'Component') a.text = null; else fillAsset(a, new Uint8Array(0), null);
+    }
+    assets.push(a);
+    for (let p = a.folder; p; p = parentPath(p)) folders.add(p);
+  }
+  return { bundle, assets, folders, warnings };
+}
+
+async function openBundle() {
+  if (S.assets.length && !confirm('Open another bundle? Changes to the current bundle that are not exported will be lost.')) return;
+  let picked;
+  try { picked = await pickBundleFiles(); } catch (e) { toast('Could not read the folder: ' + e.message, true); return; }
+  if (!picked) return;
+  const r = await parseBundle(picked.files, picked.name);
+  for (const a of S.assets) disposeAssetGL(a);
+  S.bundle = r.bundle; S.assets = r.assets; S.folders = r.folders; S.sel = null; S.nav = { ref: null, path: '' }; S.dirty = false;
+  S.refs = S.refs.filter(x => S.bundle.refList.some(l => l.uuid === x.uuid));
+  toast(r.warnings.length ? 'Opened with ' + r.warnings.length + ' warning(s): ' + r.warnings[0] : 'Opened "' + S.bundle.name + '" (' + r.assets.length + ' assets).', r.warnings.length > 0);
+  select(null); refreshAll();
+}
+async function addReference() {
+  let picked;
+  try { picked = await pickBundleFiles(); } catch (e) { toast('Could not read the folder: ' + e.message, true); return; }
+  if (!picked) return;
+  const r = await parseBundle(picked.files, picked.name);
+  if (!r.assets.length) { toast('No assets found in that folder. Pick the bundle folder that holds Bundle.nlabf.', true); return; }
+  if (r.bundle.uuid === S.bundle.uuid) { toast('That is this bundle. Pick a different one.', true); return; }
+  for (const a of r.assets) a.ref = r.bundle.uuid;
+  const ref = { uuid: r.bundle.uuid, name: r.bundle.name, assets: r.assets, folders: r.folders };
+  const old = S.refs.findIndex(x => x.uuid === ref.uuid);
+  if (old >= 0) S.refs[old] = ref; else S.refs.push(ref);
+  const li = S.bundle.refList.findIndex(x => x.uuid === ref.uuid);
+  if (li >= 0) S.bundle.refList[li].name = ref.name; else S.bundle.refList.push({ name: ref.name, uuid: ref.uuid });
+  S.nav = { ref: ref.uuid, path: '' }; S.open.add('@' + ref.uuid); S.dirty = true;
+  toast('Added reference "' + ref.name + '" (' + ref.assets.length + ' assets). Its assets are not copied into this bundle.');
+  refreshAll();
+}
+function removeReference(uuid) {
+  S.refs = S.refs.filter(x => x.uuid !== uuid);
+  S.bundle.refList = S.bundle.refList.filter(x => x.uuid !== uuid);
+  if (S.nav.ref === uuid) S.nav = { ref: null, path: '' };
+  if (S.sel && S.sel.ref === uuid) select(null);
+  S.dirty = true; refreshAll();
+}
+function copyToBundle(a) {
+  const c = cloneAsset(a);
+  c.name = uniqueName(c.type, c.name, null);
+  S.assets.push(c); ensureFolder(c.folder); S.dirty = true;
+  S.nav = { ref: null, path: c.folder }; select(c); refreshAll();
+  toast('Copied "' + c.name + '" into this bundle with a new UUID.');
+}
+
+function confirmProblems() {
+  const errs = computeProblems().filter(p => p.sev === 'err').length;
+  return !errs || confirm('There are ' + errs + ' error(s) in this bundle. Export anyway?');
+}
+async function exportZip() {
+  if (!confirmProblems()) return;
+  const files = buildFiles(), base = cleanName(S.bundle.name) || 'bundle';
+  const blob = new Blob([makeZipBytes(files, base + '/')], { type: 'application/zip' });
+  const a = h('a', { href: URL.createObjectURL(blob), download: base + '.zip' });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  S.dirty = false; toast('Downloaded ' + base + '.zip (' + files.length + ' files). Unzip it into the engine Bundles folder.');
+}
+async function exportFolder() {
+  if (!window.showDirectoryPicker) { toast('This browser cannot write to folders. Use Chrome or Edge, or download the .zip.', true); return; }
+  if (!confirmProblems()) return;
+  let dir;
+  try { dir = await window.showDirectoryPicker({ mode: 'readwrite' }); } catch (e) { if (e && e.name === 'AbortError') return; toast(e.message, true); return; }
+  let nonEmpty = false;
+  for await (const _ of dir.entries()) { nonEmpty = true; break; }
+  if (nonEmpty && !confirm('This folder is not empty. Files with the same name are overwritten. Files that are no longer part of the bundle are not removed. Continue?')) return;
+  const files = buildFiles();
+  try {
+    for (const f of files) {
+      const parts = f.path.split('/'); let d = dir;
+      for (let i = 0; i < parts.length - 1; i++) d = await d.getDirectoryHandle(parts[i], { create: true });
+      const fh = await d.getFileHandle(parts[parts.length - 1], { create: true });
+      const w = await fh.createWritable(); await w.write(f.data); await w.close();
+    }
+  } catch (e) { toast('Export failed: ' + e.message, true); return; }
+  S.dirty = false; toast('Wrote ' + files.length + ' files into "' + dir.name + '".');
+}
+
+/* ==========================================================================
+   Viewer: WebGL2 for models and materials, 2D canvas for textures, DOM for text assets
+   ========================================================================== */
+const VS = `#version 300 es
+layout(location=0) in vec3 aPos; layout(location=1) in vec3 aNrm; layout(location=2) in vec2 aUV;
+uniform mat4 uVP; uniform mat4 uM;
+out vec3 vN; out vec3 vP; out vec2 vUV;
+void main(){ vec4 w = uM*vec4(aPos,1.0); vP = w.xyz; vN = mat3(uM)*aNrm; vUV = aUV; gl_Position = uVP*w; }`;
+// Lighting: Blinn-Phong highlight plus a small procedural sky/ground environment for reflections.
+// Normal maps use the screen-space cotangent frame, so the meshes need no tangents.
+const FS = `#version 300 es
+precision highp float;
+in vec3 vN; in vec3 vP; in vec2 vUV;
+uniform vec3 uCam; uniform vec4 uColor; uniform vec3 uEmit; uniform float uMetal; uniform float uRough;
+uniform sampler2D uAlbedo; uniform sampler2D uNormal; uniform vec2 uHas; uniform vec4 uSO0; uniform vec4 uSO1; uniform int uMode;
+out vec4 o;
+vec3 env(vec3 d, float rough){
+  float y = d.y;
+  vec3 sky = mix(vec3(0.55,0.62,0.72), vec3(0.16,0.30,0.55), clamp(y,0.0,1.0));
+  vec3 gnd = mix(vec3(0.20,0.19,0.18), vec3(0.08,0.08,0.09), clamp(-y,0.0,1.0));
+  vec3 c = mix(gnd, sky, smoothstep(-0.08,0.08,y));
+  float sun = pow(max(dot(d, normalize(vec3(0.5,0.8,0.6))),0.0), mix(400.0,6.0,rough));
+  c += vec3(1.0,0.93,0.8)*sun*mix(3.0,0.4,rough);
+  return mix(c, vec3(0.30,0.32,0.35), rough*rough*0.6);
+}
+vec3 perturb(vec3 N, vec3 p, vec2 uv, vec3 t){
+  vec3 dp1 = dFdx(p), dp2 = dFdy(p); vec2 du1 = dFdx(uv), du2 = dFdy(uv);
+  vec3 a = cross(dp2,N), b = cross(N,dp1);
+  vec3 T = a*du1.x + b*du2.x, B = a*du1.y + b*du2.y;
+  float inv = inversesqrt(max(max(dot(T,T),dot(B,B)),1e-12));
+  return normalize(mat3(T*inv,B*inv,N)*t);
+}
+void main(){
+  if (uMode == 1) { o = vec4(uColor.rgb,1.0); return; }
+  vec3 N = normalize(vN);
+  if (!gl_FrontFacing) N = -N;
+  vec3 V = normalize(uCam - vP);
+  vec3 base = uColor.rgb;
+  if (uHas.x > 0.5) base *= texture(uAlbedo, vUV*uSO0.xy+uSO0.zw).rgb;
+  if (uHas.y > 0.5) { vec2 uvn = vUV*uSO1.xy+uSO1.zw; N = perturb(N, vP, uvn, texture(uNormal, uvn).xyz*2.0-1.0); }
+  base = pow(base, vec3(2.2));
+  float metal = clamp(uMetal,0.0,1.0), rough = clamp(uRough,0.04,1.0);
+  vec3 L = normalize(vec3(0.5,0.8,0.6)), H = normalize(L+V);
+  float ndl = max(dot(N,L),0.0);
+  vec3 F0 = mix(vec3(0.04), base, metal);
+  float fres = pow(1.0-max(dot(N,V),0.0),5.0);
+  vec3 F = F0 + (1.0-F0)*fres*(1.0-rough);
+  vec3 diffuse = base*(1.0-metal)*(vec3(0.62)*ndl + env(N,1.0)*0.45);
+  vec3 R = reflect(-V,N);
+  vec3 spec = F*(env(R,rough)*0.9 + vec3(pow(max(dot(N,H),0.0), mix(300.0,8.0,rough)))*ndl*0.6);
+  vec3 col = diffuse + spec + pow(uEmit, vec3(2.2));
+  col = col/(1.0+col*0.35);
+  o = vec4(pow(col, vec3(1.0/2.2)), 1.0);
+}`;
+
+const V = {
+  mode: 'empty', gl: null, failed: false, prog: null, U: null, white: null,
+  cam: { yaw: 0.7, pitch: 0.28, dist: 3.2, t: [0, 0, 0], radius: 1 },
+  shape: 'sphere', shading: 'lit', meshes: new Map(), tex: new Map(),
+  tv: { scale: 1, x: 0, y: 0, chan: 'RGBA', fitted: false }, raf: 0, drag: null,
+  FOV: 0.7, vp: new Float32Array(16), vw: new Float32Array(16), pj: new Float32Array(16),
+  ident: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]), eye: [0, 0, 0]
+};
+
+function initGL() {
+  if (V.gl) return true;
+  if (V.failed) return false;
+  const gl = (() => { try { return $('#gl').getContext('webgl2', { antialias: true, alpha: true, premultipliedAlpha: true }); } catch (e) { return null; } })();
+  if (!gl) { V.failed = true; return false; }
+  const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+  try {
+    const p = gl.createProgram();
+    gl.attachShader(p, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, FS));
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+    V.prog = p;
+  } catch (e) { console.error(e); V.failed = true; return false; }
+  V.U = {};
+  for (const n of ['uVP', 'uM', 'uCam', 'uColor', 'uEmit', 'uMetal', 'uRough', 'uAlbedo', 'uNormal', 'uHas', 'uSO0', 'uSO1', 'uMode']) V.U[n] = gl.getUniformLocation(V.prog, n);
+  V.white = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, V.white);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255]));
+  V.gl = gl; return true;
+}
+
+function makeMesh(data, subs, min, max) {
+  const gl = V.gl, vao = gl.createVertexArray(), vbo = gl.createBuffer();
+  gl.bindVertexArray(vao); gl.bindBuffer(gl.ARRAY_BUFFER, vbo); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 32, 0);
+  gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 32, 12);
+  gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 2, gl.FLOAT, false, 32, 24);
+  gl.bindVertexArray(null);
+  const c = [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2];
+  return { vao, vbo, data, subs, center: c, radius: Math.max(Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) / 2, 1e-4), lineVao: null, lineVbo: null, lineCount: 0 };
+}
+function ensureLines(m) {
+  if (m.lineVao) return;
+  const gl = V.gl, n = m.data.length / 24;
+  if (n > 400000) { m.lineVao = gl.createVertexArray(); m.lineCount = 0; return; }
+  const L = new Float32Array(n * 18);
+  for (let t = 0; t < n; t++) {
+    const b = t * 24, o = t * 18;
+    for (let e = 0; e < 3; e++) {
+      const a = b + e * 8, c = b + ((e + 1) % 3) * 8;
+      L.set([m.data[a], m.data[a + 1], m.data[a + 2], m.data[c], m.data[c + 1], m.data[c + 2]], o + e * 6);
+    }
+  }
+  m.lineVao = gl.createVertexArray(); m.lineVbo = gl.createBuffer();
+  gl.bindVertexArray(m.lineVao); gl.bindBuffer(gl.ARRAY_BUFFER, m.lineVbo); gl.bufferData(gl.ARRAY_BUFFER, L, gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 12, 0); gl.bindVertexArray(null);
+  m.lineCount = n * 6;
+}
+function freeMesh(m) { const gl = V.gl; if (!gl || !m) return; gl.deleteBuffer(m.vbo); gl.deleteVertexArray(m.vao); if (m.lineVbo) gl.deleteBuffer(m.lineVbo); if (m.lineVao) gl.deleteVertexArray(m.lineVao); }
+
+// ---- primitives (all non-indexed triangle lists, 8 floats per vertex) ----
+// Algorithm: UV sphere, latitude/longitude grid.
+function genSphere(su, sv) {
+  const o = [], pt = (u, v) => { const th = v * Math.PI, ph = u * 2 * Math.PI, x = Math.sin(th) * Math.cos(ph), y = Math.cos(th), z = Math.sin(th) * Math.sin(ph); return [x, y, z, x, y, z, u, 1 - v]; };
+  for (let j = 0; j < sv; j++) for (let i = 0; i < su; i++) {
+    const a = pt(i / su, j / sv), b = pt((i + 1) / su, j / sv), c = pt((i + 1) / su, (j + 1) / sv), d = pt(i / su, (j + 1) / sv);
+    o.push(...a, ...c, ...b, ...a, ...d, ...c);
+  }
+  return new Float32Array(o);
+}
+function genCube() {
+  const o = [], faces = [[0, 0, 1], [0, 0, -1], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0]];
+  for (const n of faces) {
+    const ax = Math.abs(n[0]) ? 0 : (Math.abs(n[1]) ? 1 : 2), u = (ax + 1) % 3, v = (ax + 2) % 3, s = n[ax];
+    const pt = (a, b) => { const p = [0, 0, 0]; p[ax] = s; p[u] = a; p[v] = b; return p.concat(n, [(a + 1) / 2, (b + 1) / 2]); };
+    const q = [pt(-1, -1), pt(1, -1), pt(1, 1), pt(-1, 1)];
+    o.push(...q[0], ...q[1], ...q[2], ...q[0], ...q[2], ...q[3]);
+  }
+  return new Float32Array(o);
+}
+function genPlane() {
+  const pt = (x, z, u, v) => [x, 0, z, 0, 1, 0, u, v];
+  return new Float32Array([].concat(pt(-1.4, 1.4, 0, 0), pt(1.4, 1.4, 1, 0), pt(1.4, -1.4, 1, 1), pt(-1.4, 1.4, 0, 0), pt(1.4, -1.4, 1, 1), pt(-1.4, -1.4, 0, 1)));
+}
+function primMesh(shape) {
+  const key = 'prim:' + shape;
+  let m = V.meshes.get(key);
+  if (!m) {
+    const d = shape === 'cube' ? genCube() : shape === 'plane' ? genPlane() : genSphere(64, 32);
+    const e = shape === 'plane' ? [1.4, 0.01, 1.4] : [1, 1, 1];
+    m = makeMesh(d, [{ name: '', first: 0, count: d.length / 8 }], [-e[0], -e[1], -e[2]], e);
+    V.meshes.set(key, m);
+  }
+  return m;
+}
+function modelMesh(a) {
+  let m = V.meshes.get(a.id);
+  if (!m) { const o = getObj(a); if (!o.stats.tris) return null; m = makeMesh(o.data, o.subs, o.min, o.max); V.meshes.set(a.id, m); }
+  return m;
+}
+function glTexture(a) {
+  if (!V.gl) return null;
+  let t = V.tex.get(a.id);
+  if (t) return t;
+  if (!a._img) { ensureImage(a); return null; }
+  const gl = V.gl;
+  t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+  // UNPACK_FLIP_Y_WEBGL is ignored for ImageBitmap sources, so upload through a canvas instead.
+  const src = document.createElement('canvas'); src.width = a._img.width; src.height = a._img.height;
+  src.getContext('2d').drawImage(a._img, 0, 0);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  gl.generateMipmap(gl.TEXTURE_2D);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+  V.tex.set(a.id, t);
+  return t;
+}
+function disposeAssetGL(a) {
+  if (a._img && a._img.close) { try { a._img.close(); } catch (e) { /* already closed */ } }
+  if (!V.gl) return;
+  const t = V.tex.get(a.id); if (t) { V.gl.deleteTexture(t); V.tex.delete(a.id); }
+  const m = V.meshes.get(a.id); if (m) { freeMesh(m); V.meshes.delete(a.id); }
+}
+
+// ---- camera math (column-major, writes into preallocated arrays) ----
+function persp(o, fovy, aspect, n, f) {
+  const t = 1 / Math.tan(fovy / 2); o.fill(0);
+  o[0] = t / aspect; o[5] = t; o[10] = (f + n) / (n - f); o[11] = -1; o[14] = 2 * f * n / (n - f);
+}
+function lookAt(o, e, t) {
+  let zx = e[0] - t[0], zy = e[1] - t[1], zz = e[2] - t[2]; const zl = Math.hypot(zx, zy, zz) || 1; zx /= zl; zy /= zl; zz /= zl;
+  let xx = zz, xy = 0, xz = -zx; const xl = Math.hypot(xx, xz) || 1; xx /= xl; xz /= xl;       // up (0,1,0) x z
+  const yx = zy * xz - zz * xy, yy = zz * xx - zx * xz, yz = zx * xy - zy * xx;
+  o[0] = xx; o[1] = yx; o[2] = zx; o[3] = 0; o[4] = xy; o[5] = yy; o[6] = zy; o[7] = 0; o[8] = xz; o[9] = yz; o[10] = zz; o[11] = 0;
+  o[12] = -(xx * e[0] + xy * e[1] + xz * e[2]); o[13] = -(yx * e[0] + yy * e[1] + yz * e[2]); o[14] = -(zx * e[0] + zy * e[1] + zz * e[2]); o[15] = 1;
+}
+const _t = new Float32Array(16);
+function mul(o, a, b) {
+  for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) _t[c * 4 + r] = a[r] * b[c * 4] + a[4 + r] * b[c * 4 + 1] + a[8 + r] * b[c * 4 + 2] + a[12 + r] * b[c * 4 + 3];
+  o.set(_t);
+}
+function frameCamera(radius, center) {
+  V.cam.t = center.slice(); V.cam.radius = radius; V.cam.dist = radius / Math.sin(V.FOV / 2) * 1.15;
+}
+
+function bindMaterial(m) {
+  const gl = V.gl, U = V.U;
+  let color = [0.72, 0.72, 0.74, 1], emit = [0, 0, 0], metal = 0, rough = 0.6, hasA = 0, hasN = 0, so0 = [1, 1, 0, 0], so1 = [1, 1, 0, 0], tA = V.white, tN = V.white;
+  if (m) {
+    color = m.BaseColor; emit = m.EmissionColor; metal = m.Metallic; rough = m.Roughness;
+    for (const t of m.Textures) {
+      const ta = findAsset('Texture', t.TextureName); if (!ta) continue;
+      const g = glTexture(ta); if (!g) continue;
+      const sem = (t.SemanticName || '').toLowerCase();
+      if (/normal/.test(sem) && !hasN) { hasN = 1; tN = g; so1 = [t.scale[0], t.scale[1], t.offset[0], t.offset[1]]; }
+      else if (/albedo|base|diffuse|colou?r/.test(sem) && !hasA) { hasA = 1; tA = g; so0 = [t.scale[0], t.scale[1], t.offset[0], t.offset[1]]; }
+    }
+  }
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tA);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, tN);
+  gl.uniform1i(U.uAlbedo, 0); gl.uniform1i(U.uNormal, 1);
+  gl.uniform4f(U.uColor, color[0], color[1], color[2], color[3]);
+  gl.uniform3f(U.uEmit, emit[0], emit[1], emit[2]);
+  gl.uniform1f(U.uMetal, metal); gl.uniform1f(U.uRough, rough);
+  gl.uniform2f(U.uHas, hasA, hasN);
+  gl.uniform4f(U.uSO0, so0[0], so0[1], so0[2], so0[3]); gl.uniform4f(U.uSO1, so1[0], so1[1], so1[2], so1[3]);
+}
+
+function drawGL() {
+  const gl = V.gl, a = S.sel, cv = $('#gl'), box = $('#viewport');
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.max(1, Math.floor(box.clientWidth * dpr)), hh = Math.max(1, Math.floor(box.clientHeight * dpr));
+  if (cv.width !== w || cv.height !== hh) { cv.width = w; cv.height = hh; }
+  gl.viewport(0, 0, w, hh); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  if (!a) return;
+  const isMat = a.type === 'Material';
+  const mesh = isMat ? primMesh(V.shape) : modelMesh(a);
+  if (!mesh) return;
+  const c = V.cam, cp = Math.cos(c.pitch), sp = Math.sin(c.pitch);
+  V.eye[0] = c.t[0] + c.dist * cp * Math.sin(c.yaw); V.eye[1] = c.t[1] + c.dist * sp; V.eye[2] = c.t[2] + c.dist * cp * Math.cos(c.yaw);
+  persp(V.pj, V.FOV, w / hh, Math.max(c.radius * 0.01, 1e-3), c.dist + c.radius * 30);
+  lookAt(V.vw, V.eye, c.t); mul(V.vp, V.pj, V.vw);
+  gl.useProgram(V.prog); gl.enable(gl.DEPTH_TEST);
+  gl.uniformMatrix4fv(V.U.uVP, false, V.vp); gl.uniformMatrix4fv(V.U.uM, false, V.ident);
+  gl.uniform3f(V.U.uCam, V.eye[0], V.eye[1], V.eye[2]);
+  const solid = isMat || V.shading !== 'wire', wire = !isMat && V.shading !== 'lit';
+  gl.bindVertexArray(mesh.vao);
+  if (solid) {
+    gl.uniform1i(V.U.uMode, 0);
+    if (wire) { gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(1, 1); }
+    if (isMat) { bindMaterial(a.mat); gl.drawArrays(gl.TRIANGLES, 0, mesh.subs[0].count); }
+    else for (const s of mesh.subs) { const ma = s.name ? findAsset('Material', s.name) : null; bindMaterial(ma ? ma.mat : null); gl.drawArrays(gl.TRIANGLES, s.first, s.count); }
+    gl.disable(gl.POLYGON_OFFSET_FILL);
+  }
+  if (wire) {
+    ensureLines(mesh);
+    if (mesh.lineCount) { gl.uniform1i(V.U.uMode, 1); gl.uniform4f(V.U.uColor, 0.79, 0.65, 0.36, 1); gl.bindVertexArray(mesh.lineVao); gl.drawArrays(gl.LINES, 0, mesh.lineCount); }
+  }
+  gl.bindVertexArray(null);
+}
+
+// ---- texture view ----
+let _checker = null;
+function checkerPattern(ctx) {
+  if (_checker) return _checker;
+  const c = document.createElement('canvas'); c.width = c.height = 16;
+  const x = c.getContext('2d'); x.fillStyle = '#2a3036'; x.fillRect(0, 0, 16, 16); x.fillStyle = '#3a424a'; x.fillRect(0, 0, 8, 8); x.fillRect(8, 8, 8, 8);
+  return (_checker = ctx.createPattern(c, 'repeat'));
+}
+// Isolates one channel into a grey image (or forces opaque alpha for RGB).
+function channelCanvas(a, chan) {
+  a._chan = a._chan || {};
+  if (a._chan[chan]) return a._chan[chan];
+  const w = a._img.width, hgt = a._img.height, c = document.createElement('canvas'); c.width = w; c.height = hgt;
+  const x = c.getContext('2d'); x.drawImage(a._img, 0, 0);
+  const id = x.getImageData(0, 0, w, hgt), d = id.data, k = { R: 0, G: 1, B: 2, A: 3 }[chan];
+  for (let i = 0; i < d.length; i += 4) {
+    if (chan === 'RGB') d[i + 3] = 255;
+    else { const v = d[i + k]; d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255; }
+  }
+  x.putImageData(id, 0, 0);
+  return (a._chan[chan] = c);
+}
+function drawTexture() {
+  const a = S.sel, cv = $('#c2d'), box = $('#viewport');
+  const dpr = Math.min(window.devicePixelRatio || 1, 2), cw = box.clientWidth, ch = box.clientHeight;
+  if (cv.width !== Math.floor(cw * dpr) || cv.height !== Math.floor(ch * dpr)) { cv.width = Math.floor(cw * dpr); cv.height = Math.floor(ch * dpr); }
+  const ctx = cv.getContext('2d');
+  if (!ctx) return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, cw, ch);
+  if (!a || !a._img) {
+    ctx.fillStyle = '#8a95a0'; ctx.font = '13px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(a && a._imgFail ? 'The browser cannot decode this image format. The file is still exported.' : 'Decoding image...', cw / 2, ch / 2);
+    return;
+  }
+  const iw = a._img.width, ih = a._img.height, tv = V.tv;
+  if (!tv.fitted) { tv.scale = Math.min(8, Math.max(0.02, Math.min((cw - 48) / iw, (ch - 48) / ih))); tv.x = tv.y = 0; tv.fitted = true; }
+  const dw = iw * tv.scale, dh = ih * tv.scale, x0 = cw / 2 + tv.x - dw / 2, y0 = ch / 2 + tv.y - dh / 2;
+  ctx.save(); ctx.translate(x0, y0); ctx.fillStyle = checkerPattern(ctx); ctx.fillRect(0, 0, dw, dh); ctx.restore();
+  ctx.imageSmoothingEnabled = tv.scale < 1;
+  ctx.drawImage(tv.chan === 'RGBA' ? a._img : channelCanvas(a, tv.chan), x0, y0, dw, dh);
+  ctx.strokeStyle = '#c9a65b'; ctx.globalAlpha = 0.5; ctx.lineWidth = 1; ctx.strokeRect(x0 - 0.5, y0 - 0.5, dw + 1, dh + 1); ctx.globalAlpha = 1;
+  $('#viewInfo').textContent = iw + ' x ' + ih + '   ' + a.ext + '   ' + fmtSize(a.bytes.length) + '   zoom ' + Math.round(tv.scale * 100) + '%';
+}
+
+// ---- text / structure views ----
+function codeView(text) {
+  const lines = text.split('\n'), cut = lines.length > 4000, shown = cut ? lines.slice(0, 4000) : lines;
+  return h('div', { class: 'code' },
+    h('pre', { class: 'ln', text: shown.map((_, i) => i + 1).join('\n') }),
+    h('pre', { text: shown.join('\n') + (cut ? '\n... ' + (lines.length - 4000) + ' more lines' : '') }));
+}
+function sceneTree(j) {
+  const root = h('div', { class: 'tree' });
+  const walk = (obj, parent) => {
+    for (const name of Object.keys(obj)) {
+      const n = obj[name], row = h('div', { class: 'nn' }, icon('Scene'), ' ', name);
+      if (isObj(n) && isObj(n.Components)) for (const c of Object.keys(n.Components)) row.append(h('span', { class: 'chip', text: c }));
+      parent.append(row);
+      if (isObj(n) && isObj(n.Children) && Object.keys(n.Children).length) { const box = h('div', { class: 'node' }); parent.append(box); walk(n.Children, box); }
+    }
+  };
+  walk(j.Root, root);
+  return root;
+}
+function stageBox(label, name, type) {
+  if (!name) return h('div', { class: 'stage none' }, h('div', { class: 'k', text: label }), h('div', { class: 'v', text: 'not set' }));
+  const ok = !!findAsset(type, name);
+  return h('div', { class: 'stage ' + (ok ? 'ok' : 'miss') }, h('div', { class: 'k', text: label + (ok ? '' : ' - not in bundle') }), h('div', { class: 'v', text: name }));
+}
+function buildTextView(a) {
+  const tv = $('#textView'); tv.textContent = '';
+  if (!a) return;
+  if (a.type === 'Shader') {
+    const s = a.sh, row = h('div', { class: 'pipe' });
+    if (s.Drawable) { row.append(stageBox('Vertex', s.Vertex, 'RawShader'), h('div', { class: 'wire' }), stageBox('Fragment', s.Fragment, 'RawShader')); if (s.Geometry) row.append(h('div', { class: 'wire' }), stageBox('Geometry', s.Geometry, 'RawShader')); }
+    else row.append(stageBox('Compute', s.Compute, 'RawShader'));
+    tv.append(h('div', { class: 'note', text: 'Each stage names a raw shader source. The engine reads them from this bundle first.' }), row, h('div', { style: 'height:18px' }), codeView(shToJson(a)));
+  } else if (a.type === 'Scene') {
+    let j = null;
+    try { j = JSON.parse(a.text || ''); } catch (e) { tv.append(h('div', { class: 'note err', text: 'Invalid JSON: ' + e.message })); }
+    if (j && isObj(j.Root)) tv.append(sceneTree(j)); else if (j) tv.append(h('div', { class: 'note warn', text: 'No "Root" object in this scene.' }));
+    tv.append(h('div', { style: 'height:18px' }), codeView(a.text || ''));
+  } else if (a.type === 'Component') {
+    tv.append(h('div', { class: 'note', text: a.text == null ? 'This entry only names a C# class that is compiled into the engine: ' + a.name + '. No script file is exported.' : 'Script file, exported as it is.' }));
+    if (a.text != null) tv.append(codeView(a.text));
+  } else if (a.type === 'RawShader') tv.append(codeView(a.text || ''));
+  else if (a.type === 'Material' || a.type === 'Model') {
+    tv.append(h('div', { class: 'note warn', text: 'WebGL2 is not available in this browser, so there is no 3D preview.' }));
+    if (a.type === 'Model') { const o = getObj(a); tv.append(h('div', { class: 'note', text: o.stats.tris + ' triangles, ' + o.stats.v + ' vertices.' })); }
+    else tv.append(codeView(matToJson(a)));
+  }
+}
+
+// ---- show / refresh ----
+function viewMode(m) { V.mode = m; $('#viewport').className = 'mode-' + m; }
+function buildViewTools() {
+  const t = $('#viewTools'); t.textContent = '';
+  const a = S.sel; if (!a) return;
+  const seg = (items, cur, on) => h('div', { class: 'seg' }, items.map(([v, l]) => h('button', { class: v === cur ? 'on' : '', text: l, onclick: () => { on(v); buildViewTools(); } })));
+  if (a.type === 'Texture') {
+    t.append(seg(['RGBA', 'RGB', 'R', 'G', 'B', 'A'].map(x => [x, x]), V.tv.chan, v => { V.tv.chan = v; redraw(); }),
+      h('button', { class: 'btn small', text: 'Fit', onclick: () => { V.tv.fitted = false; redraw(); } }),
+      h('button', { class: 'btn small', text: '100%', onclick: () => { V.tv.scale = 1; V.tv.x = V.tv.y = 0; V.tv.fitted = true; redraw(); } }));
+  } else if (a.type === 'Model') {
+    t.append(seg([['lit', 'Lit'], ['wire', 'Wire'], ['both', 'Both']], V.shading, v => { V.shading = v; redraw(); }),
+      h('button', { class: 'btn small', text: 'Reset view', onclick: () => { frameView(); redraw(); } }));
+  } else if (a.type === 'Material') {
+    t.append(seg([['sphere', 'Sphere'], ['cube', 'Cube'], ['plane', 'Plane']], V.shape, v => { V.shape = v; frameView(); redraw(); }),
+      h('button', { class: 'btn small', text: 'Reset view', onclick: () => { frameView(); redraw(); } }));
+  }
+}
+function frameView() {
+  const a = S.sel; if (!a || !initGL()) return;
+  const m = a.type === 'Material' ? primMesh(V.shape) : a.type === 'Model' ? modelMesh(a) : null;
+  if (m) { frameCamera(m.radius, m.center); V.cam.yaw = 0.7; V.cam.pitch = 0.28; }
+}
+function showAsset() {
+  const a = S.sel, title = $('#viewTitle');
+  title.textContent = '';
+  if (!a) { title.textContent = 'No asset selected'; viewMode('empty'); buildViewTools(); return; }
+  title.append(a.name, h('small', { text: TYPE[a.type].label + (a.ref ? '  -  reference' : '') }));
+  V.tv.fitted = false; V.tv.chan = 'RGBA'; $('#viewInfo').textContent = '';
+  if (a.type === 'Texture') { viewMode('2d'); ensureImage(a); }
+  else if ((a.type === 'Model' || a.type === 'Material')) {
+    if (initGL()) {
+      viewMode('gl');
+      for (const s of (a.type === 'Material' ? a.mat.Textures : [])) { const ta = findAsset('Texture', s.TextureName); if (ta) ensureImage(ta); }
+      if (a.type === 'Model') for (const mn of getObj(a).mats) { const ma = findAsset('Material', mn); if (ma) for (const s of ma.mat.Textures) { const ta = findAsset('Texture', s.TextureName); if (ta) ensureImage(ta); } }
+      frameView();
+      const o = a.type === 'Model' ? getObj(a) : null;
+      $('#viewInfo').textContent = o ? o.stats.tris + ' triangles  ' + o.stats.v + ' vertices  ' + o.subs.length + ' sub-mesh(es)' : 'Preview approximates the engine shading';
+    } else { buildTextView(a); viewMode('text'); }
+  } else { buildTextView(a); viewMode('text'); }
+  buildViewTools(); redraw();
+}
+function renderView() {
+  if (V.mode === 'gl' && V.gl) drawGL();
+  else if (V.mode === '2d') drawTexture();
+}
+function redraw() { if (V.raf) return; V.raf = requestAnimationFrame(() => { V.raf = 0; renderView(); }); }
+
+function bindViewInput() {
+  for (const cv of [$('#gl'), $('#c2d')]) {
+    cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); V.drag = { x: e.clientX, y: e.clientY, btn: e.button, shift: e.shiftKey }; });
+    cv.addEventListener('pointerup', () => { V.drag = null; });
+    cv.addEventListener('pointercancel', () => { V.drag = null; });
+    cv.addEventListener('contextmenu', e => e.preventDefault());
+    cv.addEventListener('pointermove', e => {
+      const d = V.drag; if (!d) return;
+      const dx = e.clientX - d.x, dy = e.clientY - d.y; d.x = e.clientX; d.y = e.clientY;
+      if (cv.id === 'c2d') { V.tv.x += dx; V.tv.y += dy; redraw(); return; }
+      const c = V.cam;
+      if (d.btn === 1 || d.btn === 2 || d.shift) {
+        const k = c.dist * 0.0016, sy = Math.sin(c.yaw), cy = Math.cos(c.yaw), sp = Math.sin(c.pitch), cp = Math.cos(c.pitch);
+        c.t[0] += -dx * k * cy + dy * k * (-sp * sy); c.t[1] += dy * k * cp; c.t[2] += dx * k * sy + dy * k * (-sp * cy);
+      } else { c.yaw -= dx * 0.008; c.pitch = Math.max(-1.5, Math.min(1.5, c.pitch + dy * 0.008)); }
+      redraw();
+    });
+    cv.addEventListener('wheel', e => {
+      e.preventDefault();
+      if (cv.id === 'c2d') { V.tv.scale = Math.max(0.02, Math.min(64, V.tv.scale * Math.exp(-e.deltaY * 0.0016))); V.tv.fitted = true; }
+      else V.cam.dist = Math.max(V.cam.radius * 0.15, Math.min(V.cam.radius * 14, V.cam.dist * Math.exp(e.deltaY * 0.0016)));
+      redraw();
+    }, { passive: false });
+    cv.addEventListener('dblclick', () => { if (cv.id === 'c2d') V.tv.fitted = false; else frameView(); redraw(); });
+  }
+  if (window.ResizeObserver) new ResizeObserver(() => redraw()).observe($('#viewport'));
+}
+
+/* ==========================================================================
+   UI: asset panel, settings panel, review dialog, top bar
+   ========================================================================== */
+let uiQueued = false;
+function scheduleUI() {
+  if (uiQueued) return; uiQueued = true;
+  setTimeout(() => {
+    uiQueued = false;
+    S.problems = computeProblems();
+    renderTiles(); updateBadge(); updateGenerated(); renderViewTitle();
+    if (S.sel && ['Shader', 'Scene', 'Component', 'RawShader'].includes(S.sel.type) && !S._noTextRebuild) buildTextView(S.sel);
+    if ($('#review').open) renderReview();
+    redraw();
+  }, 0);
+}
+function touch(a) { S.dirty = true; scheduleUI(); }
+function select(a) { S.sel = a || null; showAsset(); renderInspector(); renderTree(); renderTiles(); }
+function refreshAll() { S.problems = computeProblems(); renderTree(); renderTiles(); renderInspector(); updateBadge(); renderViewTitle(); $('#bundleName').value = S.bundle.name; }
+function renderViewTitle() {
+  const a = S.sel; if (!a) return;
+  const t = $('#viewTitle'); t.textContent = ''; t.append(a.name, h('small', { text: TYPE[a.type].label + (a.ref ? '  -  reference' : '') }));
+}
+function problemsFor(a) { return (S.problems || []).filter(p => p.a === a); }
+function worst(a) { const p = problemsFor(a); return p.some(x => x.sev === 'err') ? 'err' : p.length ? 'warn' : ''; }
+function updateBadge() {
+  const P = S.problems || [], e = P.filter(p => p.sev === 'err').length, w = P.length - e, b = $('#probBadge');
+  b.textContent = P.length; b.className = 'badge ' + (e ? 'err' : w ? 'warn' : 'ok');
+}
+
+// ---------- folder tree ----------
+const tkey = (ref, path) => '@' + (ref || '') + (path ? ':' + path : '');
+function navIs(ref, path) { return (S.nav.ref || null) === (ref || null) && S.nav.path === path; }
+function goto(ref, path) { S.nav = { ref: ref || null, path }; S.filter = ''; $('#search').value = ''; renderTree(); renderTiles(); renderCrumbs(); }
+
+function treeRow(label, ico, depth, key, hasKids, sel, onclick, stub) {
+  const open = S.open.has(key);
+  const r = h('div', { class: 'trow' + (sel ? ' sel' : '') + (stub ? ' stub' : ''), style: 'padding-left:' + (8 + depth * 14) + 'px', role: 'treeitem', onclick },
+    h('span', { class: 'chev ' + (hasKids ? (open ? '' : 'closed') : 'none'), onclick: e => { e.stopPropagation(); if (open) S.open.delete(key); else S.open.add(key); renderTree(); } }, icon('chev', '')),
+    icon(ico), h('span', { class: 'nm', text: label, title: label }));
+  r.querySelector('.chev svg').style.cssText = 'width:10px;height:10px';
+  return r;
+}
+function addDrop(row, path) {
+  row.addEventListener('dragover', e => { if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('application/x-gbm-asset')) { e.preventDefault(); row.classList.add('drop'); } });
+  row.addEventListener('dragleave', () => row.classList.remove('drop'));
+  row.addEventListener('drop', e => {
+    row.classList.remove('drop');
+    const id = e.dataTransfer.getData('application/x-gbm-asset'); if (!id) return;
+    e.preventDefault(); e.stopPropagation();
+    const a = S.assets.find(x => x.id === id); if (a) { moveAsset(a, path); refreshAll(); }
+  });
+}
+function subtree(out, ref, folderSet, path, depth) {
+  const kids = Array.from(folderSet).filter(p => parentPath(p) === path).sort((a, b) => a.localeCompare(b));
+  for (const p of kids) {
+    const key = tkey(ref, p), hasKids = Array.from(folderSet).some(q => parentPath(q) === p);
+    const row = treeRow(p.slice(p.lastIndexOf('/') + 1), 'folder', depth, key, hasKids, navIs(ref, p), () => goto(ref, p));
+    if (!ref) addDrop(row, p);
+    out.append(row);
+    if (S.open.has(key)) subtree(out, ref, folderSet, p, depth + 1);
+  }
+}
+function renderTree() {
+  const t = $('#tree'); t.textContent = '';
+  const rk = tkey(null, ''), has = allFolders().size > 0;
+  const root = treeRow(S.bundle.name || 'Bundle', 'bundle', 0, rk, has, navIs(null, ''), () => goto(null, ''));
+  addDrop(root, ''); t.append(root);
+  if (S.open.has(rk)) subtree(t, null, allFolders(), '', 1);
+  if (S.refs.length || S.bundle.refList.length) {
+    t.append(h('div', { class: 'tsec', text: 'Reference bundles' }));
+    for (const l of S.bundle.refList) {
+      const r = S.refs.find(x => x.uuid === l.uuid), key = tkey(l.uuid, '');
+      if (!r) { t.append(treeRow((l.name || 'Unnamed') + ' (not loaded)', 'lock', 0, key, false, false, () => addReference(), true)); continue; }
+      const fs = refFolders(r);
+      t.append(treeRow(r.name, 'lock', 0, key, fs.size > 0, navIs(r.uuid, ''), () => goto(r.uuid, '')));
+      if (S.open.has(key)) subtree(t, r.uuid, fs, '', 1);
+    }
+  }
+}
+
+// ---------- tiles ----------
+function renderCrumbs() {
+  const c = $('#crumbs'); c.textContent = '';
+  const ref = S.nav.ref ? S.refs.find(x => x.uuid === S.nav.ref) : null;
+  const add = (label, path) => { if (c.childNodes.length) c.append(h('span', { class: 'sep', text: '/' })); c.append(h('button', { text: label, onclick: () => goto(S.nav.ref, path) })); };
+  add(ref ? ref.name : (S.bundle.name || 'Bundle'), '');
+  let acc = ''; for (const seg of S.nav.path.split('/').filter(Boolean)) { acc = joinPath(acc, seg); add(seg, acc); }
+  const mine = !S.nav.ref;
+  $('#btnNewFolder').disabled = !mine; $('#btnRenFolder').disabled = !(mine && S.nav.path); $('#btnDelFolder').disabled = !(mine && S.nav.path);
+}
+function thumbFor(a) {
+  const box = h('div', { class: 'thumb' });
+  if (a.type === 'Texture') {
+    const cv = h('canvas', { width: 68, height: 68 });
+    const draw = img => { if (!img) return; const x = cv.getContext('2d'), s = Math.min(68 / img.width, 68 / img.height); x.clearRect(0, 0, 68, 68); x.drawImage(img, (68 - img.width * s) / 2, (68 - img.height * s) / 2, img.width * s, img.height * s); };
+    if (a._img) draw(a._img); else ensureImage(a).then(draw);
+    box.append(cv);
+  } else if (a.type === 'Material') {
+    const c = a.mat.BaseColor;
+    box.append(h('div', { class: 'swatch', style: 'background:' + toHex(c) }));
+  } else box.append(icon(a.type));
+  return box;
+}
+function assetTile(a) {
+  const sev = a.ref ? '' : worst(a);
+  const t = h('div', { class: 'tile' + (S.sel === a ? ' sel' : ''), draggable: a.ref ? false : 'true', title: TYPE[a.type].label + ': ' + a.name, onclick: () => select(a) },
+    thumbFor(a), h('div', { class: 'nm', text: a.name }), sev ? h('span', { class: 'dot ' + sev }) : null, a.ref ? h('span', { class: 'lock' }, icon('lock')) : null);
+  t.addEventListener('dragstart', e => { e.dataTransfer.setData('application/x-gbm-asset', a.id); e.dataTransfer.effectAllowed = 'move'; });
+  return t;
+}
+function renderTiles() {
+  renderCrumbs();
+  const box = $('#tiles'); box.textContent = '';
+  const f = S.filter.trim().toLowerCase();
+  if (f) {
+    const hits = allAssets().filter(a => a.name.toLowerCase().includes(f));
+    if (!hits.length) box.append(h('div', { class: 'empty', text: 'No assets match "' + S.filter + '".' }));
+    for (const a of hits) box.append(assetTile(a));
+    return;
+  }
+  const ref = S.nav.ref ? S.refs.find(x => x.uuid === S.nav.ref) : null;
+  const list = ref ? ref.assets : S.assets, fset = ref ? refFolders(ref) : allFolders(), path = S.nav.path;
+  const subs = Array.from(fset).filter(p => parentPath(p) === path).sort((a, b) => a.localeCompare(b));
+  for (const p of subs) {
+    const t = h('div', { class: 'tile', title: p, onclick: () => { S.open.add(tkey(S.nav.ref, path)); goto(S.nav.ref, p); } },
+      h('div', { class: 'thumb' }, icon('folder')), h('div', { class: 'nm', text: p.slice(p.lastIndexOf('/') + 1) }));
+    if (!ref) addDrop(t, p);
+    box.append(t);
+  }
+  const here = list.filter(a => a.folder === path).sort((a, b) => a.type === b.type ? a.name.localeCompare(b.name) : TYPE_ORDER.indexOf(a.type) - TYPE_ORDER.indexOf(b.type));
+  for (const a of here) box.append(assetTile(a));
+  if (!subs.length && !here.length) {
+    box.append(h('div', { class: 'empty' }, !ref && !S.assets.length && !path
+      ? [h('b', { text: 'This bundle is empty.' }), h('br'), 'Drop files here, or use Import assets. Textures, models, shaders, materials, scenes and scripts are supported.']
+      : 'This folder is empty.'));
+  }
+}
+
+// ---------- settings panel helpers ----------
+const toHex = v => '#' + [0, 1, 2].map(i => Math.round(Math.max(0, Math.min(1, v[i])) * 255).toString(16).padStart(2, '0')).join('');
+function fromHex(hex, v) { v[0] = parseInt(hex.slice(1, 3), 16) / 255; v[1] = parseInt(hex.slice(3, 5), 16) / 255; v[2] = parseInt(hex.slice(5, 7), 16) / 255; }
+const row = (label, ctrl, cls) => h('div', { class: 'row' + (cls ? ' ' + cls : '') }, h('label', { text: label, title: label }), ctrl);
+function secEl(title, extra) { const s = h('div', { class: 'sec' }); s.append(h('h3', null, title, h('span', { class: 'grow' }), extra || null)); return s; }
+
+function inText(get, set, o) {
+  o = o || {};
+  return h('input', { type: 'text', value: get(), spellcheck: 'false', list: o.list, placeholder: o.ph, oninput: e => set(e.target.value) });
+}
+function inNum(get, set, o) {
+  o = o || {};
+  return h('input', { type: 'number', value: r6(get()), min: o.min, max: o.max, step: o.step || 0.01, oninput: e => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) set(v); } });
+}
+function inRange(get, set, min, max, step) {
+  const rg = h('input', { type: 'range', min, max, step, value: get() }), nm = h('input', { type: 'number', min, max, step, value: r6(get()) });
+  rg.addEventListener('input', () => { const v = parseFloat(rg.value); nm.value = r6(v); set(v); });
+  nm.addEventListener('input', () => { const v = parseFloat(nm.value); if (Number.isFinite(v)) { rg.value = v; set(v); } });
+  return h('div', { class: 'pair' }, rg, nm);
+}
+function inSelect(get, set, opts) {
+  const s = h('select', { onchange: e => set(e.target.value) });
+  for (const o of opts) { const [v, l] = Array.isArray(o) ? o : [o, o]; s.append(h('option', { value: v, text: l })); }
+  s.value = get(); return s;
+}
+function inCheck(get, set) { return h('input', { type: 'checkbox', checked: get(), onchange: e => set(e.target.checked) }); }
+function inColor(v, set) {
+  const c = h('input', { type: 'color', value: toHex(v), oninput: e => { fromHex(e.target.value, v); set(); } });
+  const w = h('input', { type: 'number', min: 0, step: 0.05, value: r6(v[3]), title: 'Fourth component (W)', oninput: e => { const n = parseFloat(e.target.value); if (Number.isFinite(n)) { v[3] = n; set(); } } });
+  return h('div', { class: 'pair' }, c, w);
+}
+function inPair(arr, set, step) {
+  const f = i => h('input', { type: 'number', step: step || 0.01, value: r6(arr[i]), oninput: e => { const n = parseFloat(e.target.value); if (Number.isFinite(n)) { arr[i] = n; set(); } } });
+  return h('div', { class: 'pair' }, f(0), f(1));
+}
+function datalist(id, names) { return h('datalist', { id }, names.map(n => h('option', { value: n }))); }
+const namesOf = type => Array.from(new Set(allAssets().filter(a => a.type === type).map(a => a.name))).sort((a, b) => a.localeCompare(b));
+
+// ---------- settings panel ----------
+function renderInspector() {
+  const ins = $('#inspector'), st = ins.scrollTop; ins.textContent = '';
+  const a = S.sel;
+  if (!a) bundleInspector(ins); else if (a.ref) refInspector(ins, a); else assetInspector(ins, a);
+  ins.scrollTop = st;
+}
+function uuidRow(a, canNew) {
+  const ro = h('span', { class: 'ro', text: a.id, title: a.id });
+  return row('UUID', h('div', { class: 'pair' }, ro, canNew ? h('button', { class: 'btn small', text: 'New', title: 'Generate a new UUID', onclick: () => { a.id = uuid4(); touch(a); renderInspector(); } }) : null));
+}
+function problemList(a) {
+  const P = problemsFor(a); if (!P.length) return null;
+  const s = secEl('Problems', h('span', { class: 'badge ' + (P.some(p => p.sev === 'err') ? 'err' : 'warn'), text: P.length }));
+  for (const p of P) s.append(h('div', { class: 'note ' + (p.sev === 'err' ? 'err' : 'warn'), text: p.msg }));
+  return s;
+}
+
+function assetInspector(ins, a) {
+  const head = h('div', { class: 'ins-head' });
+  head.append(h('div', { class: 'ins-type' }, icon(a.type), TYPE[a.type].label));
+  const nameIn = h('input', { type: 'text', value: a.name, spellcheck: 'false', onchange: e => { e.target.value = renameAsset(a, e.target.value); refreshAll(); showAsset(); } });
+  head.append(row('Name', nameIn), uuidRow(a, true));
+  const folders = [''].concat(Array.from(allFolders()).sort((x, y) => x.localeCompare(y)));
+  head.append(row('Folder', inSelect(() => a.folder, v => { moveAsset(a, v); refreshAll(); }, folders.map(f => [f, f || '(bundle root)']))));
+  head.append(row('Location', h('span', { class: 'ro', text: locationOf(a) || '(no file)', title: locationOf(a) })));
+  head.append(h('div', { class: 'pair', style: 'margin-top:8px' },
+    h('button', { class: 'btn small', text: 'Duplicate', onclick: () => { const c = cloneAsset(a); c.name = uniqueName(c.type, c.name + ' copy', null); S.assets.push(c); S.dirty = true; select(c); refreshAll(); } }),
+    h('button', { class: 'btn small danger', text: 'Delete', onclick: () => { if (confirm('Delete "' + a.name + '"?')) { deleteAsset(a); refreshAll(); } } })));
+  ins.append(head);
+  const pl = problemList(a); if (pl) ins.append(pl);
+
+  if (a.type === 'Texture') textureSection(ins, a);
+  else if (a.type === 'Model') modelSection(ins, a);
+  else if (a.type === 'Material') materialSections(ins, a);
+  else if (a.type === 'Shader') shaderSection(ins, a);
+  else if (a.type === 'RawShader') sourceSection(ins, a, 'Source', 'Exported as ' + fileName(a) + '. A shader file names its stages here by this asset name.');
+  else if (a.type === 'Scene') sourceSection(ins, a, 'Scene JSON', 'The scene format read by SceneSerializer: Name and a Root of named nodes.');
+  else if (a.type === 'Component') componentSection(ins, a);
+
+  extraSection(ins, a);
+  const gen = h('div', { class: 'sec' });
+  const d = h('details', null, h('summary', { text: 'Generated files' }),
+    h('div', { class: 'note', text: 'Metadata/' + metaRel(a) }), h('pre', { class: 'gen', id: 'genNlam' }),
+    (a.type === 'Material' || a.type === 'Shader') ? [h('div', { class: 'note', text: 'Assets/' + assetRel(a) }), h('pre', { class: 'gen', id: 'genFile' })] : null);
+  gen.append(d); ins.append(gen); updateGenerated();
+}
+function updateGenerated() {
+  const a = S.sel; if (!a || a.ref) return;
+  const n = $('#genNlam'), f = $('#genFile');
+  if (n) n.textContent = json(nlamObj(a));
+  if (f) f.textContent = assetText(a);
+}
+
+function textureSection(ins, a) {
+  const s = secEl('Image');
+  const i = a._info;
+  s.append(row('Size', h('span', { class: 'ro', text: i ? i.w + ' x ' + i.h + ' px' : (a._imgFail ? 'unknown' : 'decoding...') })),
+    row('File', h('span', { class: 'ro', text: a.ext + ', ' + fmtSize(a.bytes ? a.bytes.length : 0) })),
+    h('div', { class: 'note', text: 'Wrap, filter and mip settings are chosen where the texture is used: in a material\'s texture slot.' }));
+  ins.append(s);
+}
+function modelSection(ins, a) {
+  const o = getObj(a), s = secEl('Mesh');
+  s.append(row('Triangles', h('span', { class: 'ro', text: String(o.stats.tris) })), row('Vertices', h('span', { class: 'ro', text: String(o.stats.v) })),
+    row('Sub-meshes', h('span', { class: 'ro', text: String(o.subs.length) })));
+  ins.append(s);
+  const m = secEl('Materials used');
+  if (!o.mats.length) m.append(h('div', { class: 'note', text: 'This model has no usemtl lines, so the engine uses its Missing material.' }));
+  for (const n of o.mats) {
+    const ma = findAsset('Material', n);
+    m.append(h('div', { class: 'mstat' }, h('span', { class: 'dot ' + (ma ? '' : 'warn'), style: ma ? 'background:var(--ok)' : '' }), h('span', { class: 'mono', text: n }),
+      ma ? (ma.ref ? h('span', { class: 'note', text: 'in a reference bundle' }) : h('button', { class: 'btn small', text: 'Open', onclick: () => select(ma) })) :
+        h('button', { class: 'btn small', text: 'Create', onclick: () => { const nm = addAsset(newAsset({ type: 'Material', name: n, ext: 'nlmf', folder: defaultFolder('Material'), mat: defMat((S.assets.find(x => x.type === 'Shader') || {}).name || '') })); select(nm); refreshAll(); } })));
+  }
+  m.append(h('div', { class: 'note', text: 'The engine looks up each usemtl name when it loads the model, so those materials must be loaded first. The loader does this in the right order.' }));
+  ins.append(m);
+}
+
+function materialSections(ins, a) {
+  const m = a.mat, T = () => touch(a);
+  ins.append(datalist('dl-tex', namesOf('Texture')), datalist('dl-shader', namesOf('Shader')), datalist('dl-sem', SEMANTICS));
+  const s = secEl('Surface');
+  s.append(row('Shader', inText(() => m.ShaderName, v => { m.ShaderName = v; T(); }, { list: 'dl-shader', ph: 'LitShaderURP' })),
+    row('Render type', inSelect(() => m.SeeThroughType, v => { m.SeeThroughType = v; T(); }, ['Opaque', 'Transparent'])),
+    row('Cull mode', inSelect(() => m.CullMode, v => { m.CullMode = v; T(); }, ['CCW', 'CW', 'Neither'])),
+    row('Base color', inColor(m.BaseColor, T)),
+    row('Emission', inColor(m.EmissionColor, T)),
+    row('Metallic', inRange(() => m.Metallic, v => { m.Metallic = v; T(); }, 0, 1, 0.01)),
+    row('Roughness', inRange(() => m.Roughness, v => { m.Roughness = v; T(); }, 0, 1, 0.01)),
+    row('Receive shadows', inCheck(() => m.ReceiveShadows, v => { m.ReceiveShadows = v; T(); })),
+    row('Cast shadows', inCheck(() => m.CastShadows, v => { m.CastShadows = v; T(); })),
+    row('Z write', inCheck(() => m.ZWrite, v => { m.ZWrite = v; T(); })));
+  ins.append(s);
+
+  const add = h('div', { class: 'pair' }, h('button', { class: 'btn small', text: 'Add texture', onclick: () => { m.Textures.push(defSlot('', m.Textures.some(t => t.SemanticName === 'albedo') ? '' : 'albedo')); T(); renderInspector(); } }));
+  const t = secEl('Textures', add);
+  if (!m.Textures.length) t.append(h('div', { class: 'note', text: 'No textures. Add a slot, pick a texture by name, and give it a type such as albedo or normal.' }));
+  m.Textures.forEach((sl, i) => {
+    const ta = findAsset('Texture', sl.TextureName), th = h('div', { class: 'thumb', style: 'width:34px;height:34px' });
+    if (ta) { const cv = h('canvas', { width: 34, height: 34 }); const dr = img => { if (!img) return; const x = cv.getContext('2d'), k = Math.min(34 / img.width, 34 / img.height); x.drawImage(img, 0, 0, img.width * k, img.height * k); }; if (ta._img) dr(ta._img); else ensureImage(ta).then(dr); th.append(cv); } else th.append(icon('Texture'));
+    const slot = h('div', { class: 'slot' },
+      h('div', { class: 'slot-head' }, th, h('span', { class: 'grow', text: sl.SemanticName || 'texture ' + (i + 1) }),
+        h('button', { class: 'icon-btn', title: 'Remove this slot', onclick: () => { m.Textures.splice(i, 1); T(); renderInspector(); } }, icon('x'))),
+      row('Texture', inText(() => sl.TextureName, v => { sl.TextureName = v; T(); }, { list: 'dl-tex', ph: 'texture name' })),
+      row('Type', inText(() => sl.SemanticName, v => { sl.SemanticName = v; T(); }, { list: 'dl-sem', ph: 'albedo' })),
+      row('Scale', inPair(sl.scale, T)), row('Offset', inPair(sl.offset, T)));
+    const det = h('details', null, h('summary', { text: 'Sampler settings' }),
+      h('div', { class: 'note', text: 'Left on default, nothing is written and the engine uses its own default.' }));
+    for (const [key, f] of TEXKEYS) det.append(row(key.replace(/([a-z])([A-Z])/g, '$1 $2'), inSelect(() => sl[f], v => { sl[f] = v; T(); }, [['', '(engine default)']].concat(ENUM[f].map(x => [x, x])))));
+    slot.append(det); t.append(slot);
+  });
+  if (m.migrated) t.append(h('div', { class: 'note warn', text: 'This file used older key names (TextureWarp, TexturePixel, TextureType, TextureMipmap). They were converted to the names the engine reads.' }));
+  t.append(h('div', { class: 'note', text: 'The viewer shows albedo and normal slots. Other slots are written but not previewed.' }));
+  ins.append(t);
+}
+
+function shaderSection(ins, a) {
+  const s = a.sh, T = () => touch(a);
+  ins.append(datalist('dl-raw', namesOf('RawShader')));
+  const sec = secEl('Stages');
+  sec.append(row('Drawable', inCheck(() => s.Drawable, v => { s.Drawable = v; T(); renderInspector(); })));
+  if (s.Drawable) sec.append(row('Vertex', inText(() => s.Vertex, v => { s.Vertex = v; T(); }, { list: 'dl-raw' })), row('Fragment', inText(() => s.Fragment, v => { s.Fragment = v; T(); }, { list: 'dl-raw' })), row('Geometry', inText(() => s.Geometry, v => { s.Geometry = v; T(); }, { list: 'dl-raw', ph: 'optional' })));
+  else sec.append(row('Compute', inText(() => s.Compute, v => { s.Compute = v; T(); }, { list: 'dl-raw' })));
+  sec.append(h('div', { class: 'note', text: 'Stage names are raw shader assets. They are read from this bundle first, then from the engine.' }));
+  ins.append(sec);
+}
+function sourceSection(ins, a, title, note) {
+  const s = secEl(title);
+  const ta = h('textarea', { class: 'src', spellcheck: 'false', value: a.text || '', oninput: e => { a.text = e.target.value; S._noTextRebuild = false; touch(a); } });
+  s.append(h('div', { class: 'row stack' }, ta), h('div', { class: 'note', text: note }));
+  ins.append(s);
+}
+function componentSection(ins, a) {
+  const s = secEl('Script');
+  s.append(row('Script file', inCheck(() => a.text != null, v => { a.text = v ? '// ' + a.name + '\n' : null; touch(a); renderInspector(); })),
+    h('div', { class: 'note', text: 'The Name is the C# class name. Components are compiled into the engine, so the loader only checks that the class exists. A script file is optional and exported as it is.' }));
+  if (a.text != null) s.append(h('div', { class: 'row stack' }, h('textarea', { class: 'src', spellcheck: 'false', value: a.text, oninput: e => { a.text = e.target.value; touch(a); } })));
+  ins.append(s);
+}
+
+function extraSection(ins, a) {
+  const s = secEl('Extra metadata', h('button', { class: 'btn small', text: 'Add', onclick: () => { a.extra.push({ k: '', v: '' }); touch(a); renderInspector(); } }));
+  const kind = v => typeof v === 'boolean' ? 'bool' : typeof v === 'number' ? 'number' : 'text';
+  a.extra.forEach((e, i) => {
+    const val = () => kind(e.v) === 'bool' ? h('input', { type: 'checkbox', checked: e.v, onchange: ev => { e.v = ev.target.checked; touch(a); } })
+      : kind(e.v) === 'number' ? h('input', { type: 'number', step: 'any', value: e.v, oninput: ev => { const n = parseFloat(ev.target.value); if (Number.isFinite(n)) { e.v = n; touch(a); } } })
+        : h('input', { type: 'text', value: e.v, oninput: ev => { e.v = ev.target.value; touch(a); } });
+    s.append(h('div', { class: 'xrow' },
+      h('input', { type: 'text', value: e.k, placeholder: 'key', oninput: ev => { e.k = ev.target.value; touch(a); } }),
+      h('select', { onchange: ev => { const k = ev.target.value; e.v = k === 'bool' ? false : k === 'number' ? 0 : String(e.v); touch(a); renderInspector(); } },
+        [['text', 'Text'], ['number', 'Number'], ['bool', 'Yes/no']].map(([v, l]) => h('option', { value: v, text: l, selected: kind(e.v) === v }))),
+      val(), h('button', { class: 'icon-btn', title: 'Remove', onclick: () => { a.extra.splice(i, 1); touch(a); renderInspector(); } }, icon('x'))));
+  });
+  if (a.type === 'Texture') {
+    const sug = h('div', { class: 'sug' });
+    for (const [k, v] of [['channels', 'rgba'], ['hdr', false]]) if (!a.extra.some(e => e.k === k)) sug.append(h('button', { class: 'btn small', text: '+ ' + k, onclick: () => { a.extra.push({ k, v }); touch(a); renderInspector(); } }));
+    if (sug.childNodes.length) s.append(sug);
+  }
+  s.append(h('div', { class: 'note', text: 'Written to the .nlam file as "Extra": a list of { Key, Value }. The loader does not read it yet.' }));
+  ins.append(s);
+}
+
+function refInspector(ins, a) {
+  const r = S.refs.find(x => x.uuid === a.ref), head = h('div', { class: 'ins-head' });
+  head.append(h('div', { class: 'ins-type' }, icon(a.type), TYPE[a.type].label, h('span', { class: 'chip' }, 'read-only')),
+    row('Name', h('span', { class: 'ro', text: a.name })), row('From', h('span', { class: 'ro', text: r ? r.name : '' })), row('UUID', h('span', { class: 'ro', text: a.id, title: a.id })),
+    row('Location', h('span', { class: 'ro', text: locationOf(a) || '(no file)' })),
+    h('div', { class: 'note', text: 'This asset lives in a reference bundle. Other assets here can use it by name without copying it. Nothing from a reference is exported.' }),
+    h('button', { class: 'btn small', text: 'Copy into this bundle', onclick: () => copyToBundle(a) }));
+  ins.append(head);
+  if (a.type === 'Texture') textureSection(ins, a);
+  else if (a.type === 'Model') { const o = getObj(a), s = secEl('Mesh'); s.append(row('Triangles', h('span', { class: 'ro', text: String(o.stats.tris) })), row('Materials', h('span', { class: 'ro', text: o.mats.join(', ') || 'none' }))); ins.append(s); }
+  else if (a.type === 'Material') {
+    const s = secEl('Surface'), m = a.mat;
+    s.append(row('Shader', h('span', { class: 'ro', text: m.ShaderName })), row('Metallic', h('span', { class: 'ro', text: String(r6(m.Metallic)) })), row('Roughness', h('span', { class: 'ro', text: String(r6(m.Roughness)) })));
+    for (const t of m.Textures) s.append(row(t.SemanticName || 'texture', h('span', { class: 'ro', text: t.TextureName })));
+    ins.append(s);
+  } else if (a.type === 'Shader') { const s = secEl('Stages'); for (const k of ['Vertex', 'Fragment', 'Geometry', 'Compute']) if (a.sh[k]) s.append(row(k, h('span', { class: 'ro', text: a.sh[k] }))); ins.append(s); }
+}
+
+function bundleInspector(ins) {
+  const head = h('div', { class: 'ins-head' });
+  head.append(h('div', { class: 'ins-type' }, icon('bundle'), 'Bundle'),
+    row('Name', h('input', { type: 'text', value: S.bundle.name, spellcheck: 'false', oninput: e => { S.bundle.name = e.target.value; $('#bundleName').value = e.target.value; S.dirty = true; renderTree(); renderCrumbs(); updateBadge(); } })),
+    row('UUID', h('div', { class: 'pair' }, h('span', { class: 'ro', text: S.bundle.uuid, title: S.bundle.uuid }), h('button', { class: 'btn small', text: 'New', onclick: () => { S.bundle.uuid = uuid4(); renderInspector(); } }))));
+  ins.append(head);
+  const s = secEl('Contents');
+  for (const t of TYPE_ORDER) { const n = S.assets.filter(a => a.type === t).length; if (n) s.append(row(TYPE[t].plural, h('span', { class: 'ro', text: String(n) }))); }
+  if (!S.assets.length) s.append(h('div', { class: 'note', text: 'Nothing here yet. Import assets, or create a material, shader or component from the New menu.' }));
+  ins.append(s);
+  const r = secEl('Reference bundles', h('button', { class: 'btn small', text: 'Add', onclick: () => addReference() }));
+  r.append(h('div', { class: 'note', text: 'A reference bundle shows its assets in the asset panel so materials and shaders here can use them by name. They are not copied or exported. The names are saved in Bundle.nlabf as "References".' }));
+  const list = h('div', { class: 'reflist' });
+  for (const l of S.bundle.refList) {
+    const loaded = S.refs.find(x => x.uuid === l.uuid);
+    list.append(h('div', { class: 'rr' }, icon(loaded ? 'bundle' : 'lock'), h('span', { class: 'nm', text: l.name || l.uuid }), h('span', { class: 'badge', text: loaded ? loaded.assets.length + ' assets' : 'not loaded' }),
+      h('button', { class: 'icon-btn', title: 'Remove reference', onclick: () => removeReference(l.uuid) }, icon('x'))));
+  }
+  r.append(list); ins.append(r);
+  const u = secEl('Using the bundle');
+  u.append(h('div', { class: 'note', text: 'Export to a folder, put it where the engine looks for bundles, then call AssetBundleLoader.LoadAssetBundle("' + (cleanName(S.bundle.name) || 'Name') + '").' }));
+  ins.append(u);
+}
+
+// ---------- review dialog ----------
+let reviewTab = 'problems';
+function renderReview() {
+  const body = $('#reviewBody'); body.textContent = '';
+  for (const t of document.querySelectorAll('#review .tab')) t.classList.toggle('on', t.dataset.tab === reviewTab);
+  S.problems = computeProblems();
+  if (reviewTab === 'problems') {
+    if (!S.problems.length) body.append(h('div', { class: 'note ok', text: 'No problems found.' }));
+    for (const p of S.problems) body.append(h('div', { class: 'prob', onclick: () => { if (p.a) { $('#review').close(); S.nav = { ref: null, path: p.a.folder }; select(p.a); } } },
+      h('span', { class: 'dot ' + p.sev }), h('span', { class: 'who', text: p.a ? TYPE[p.a.type].label + ': ' + p.a.name : 'Bundle' }), h('span', { text: p.msg })));
+  } else if (reviewTab === 'output') {
+    const files = buildFiles(), tree = h('div', { class: 'ftree' });
+    let total = 0;
+    const dirs = new Set();
+    for (const f of files.sort((x, y) => x.path.localeCompare(y.path))) {
+      const parts = f.path.split('/'); total += f.data.length;
+      for (let i = 0; i < parts.length - 1; i++) { const d = parts.slice(0, i + 1).join('/'); if (!dirs.has(d)) { dirs.add(d); tree.append(h('div', { style: 'padding-left:' + (i * 16) + 'px' }, h('span', { class: 'd', text: parts[i] + '/' }))); } }
+      tree.append(h('div', { style: 'padding-left:' + ((parts.length - 1) * 16) + 'px' }, parts[parts.length - 1], h('span', { class: 'sz', text: fmtSize(f.data.length) })));
+    }
+    body.append(h('div', { class: 'note', text: files.length + ' files, ' + fmtSize(total) + '. Reference bundle assets are not included.' }), tree);
+  } else body.append(h('pre', { text: json(nlabfObj()) }));
+}
+function openReview(tab) { reviewTab = tab || reviewTab; renderReview(); const d = $('#review'); if (d.showModal) d.showModal(); else d.setAttribute('open', ''); }
+
+// ---------- splitters ----------
+function bindSplit(el, onMove) {
+  el.addEventListener('pointerdown', e => { el.setPointerCapture(e.pointerId); el.classList.add('drag'); });
+  el.addEventListener('pointermove', e => { if (el.classList.contains('drag')) { onMove(e); redraw(); } });
+  const end = () => el.classList.remove('drag');
+  el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
+}
+
+// ---------- start ----------
+function initUI() {
+  const root = document.documentElement.style;
+  bindSplit($('#splitR'), e => root.setProperty('--right', Math.max(260, Math.min(680, window.innerWidth - e.clientX - 2)) + 'px'));
+  bindSplit($('#splitH'), e => { const r = $('#left').getBoundingClientRect(); root.setProperty('--assetsH', Math.max(150, Math.min(r.height - 170, r.bottom - e.clientY)) + 'px'); });
+  bindViewInput();
+
+  $('#bundleName').addEventListener('input', e => { S.bundle.name = e.target.value; S.dirty = true; renderTree(); renderCrumbs(); updateBadge(); });
+  $('#btnOpen').addEventListener('click', () => openBundle());
+  $('#btnAddRef').addEventListener('click', () => addReference());
+  const fi = $('#fileInput'); fi.accept = Object.values(TYPE).flatMap(t => t.exts).map(x => '.' + x).join(',');
+  $('#btnImport').addEventListener('click', () => { fi.value = ''; fi.click(); });
+  fi.addEventListener('change', () => importFiles(fi.files));
+  $('#btnExportFolder').addEventListener('click', () => exportFolder());
+  $('#btnExportZip').addEventListener('click', () => exportZip());
+  $('#btnReview').addEventListener('click', () => openReview());
+  $('#btnCloseReview').addEventListener('click', () => $('#review').close());
+  for (const t of document.querySelectorAll('#review .tab')) t.addEventListener('click', () => { reviewTab = t.dataset.tab; renderReview(); });
+
+  const menu = $('#menuNew'), pop = $('#menuNewPop');
+  const items = [['Folder', 'folder', () => { if (S.nav.ref) goto(null, ''); const n = prompt('Folder name'); if (n) { const p = newFolder(S.nav.path, n); if (p) { S.open.add(tkey(null, S.nav.path)); goto(null, p); refreshAll(); } } }],
+    ['Material', 'Material', newMaterial], ['Shader', 'Shader', newShader], ['Scene', 'Scene', newScene], ['Component', 'Component', newComponent]];
+  for (const [l, ic, fn] of items) pop.append(h('button', { onclick: () => { menu.classList.remove('open'); fn(); } }, icon(ic), 'New ' + l.toLowerCase()));
+  $('#btnNew').addEventListener('click', e => { e.stopPropagation(); menu.classList.toggle('open'); });
+  document.addEventListener('click', () => menu.classList.remove('open'));
+
+  $('#btnNewFolder').addEventListener('click', () => { const n = prompt('Folder name'); if (n) { const p = newFolder(S.nav.path, n); if (p) { S.open.add(tkey(null, S.nav.path)); goto(null, p); refreshAll(); } } });
+  $('#btnRenFolder').addEventListener('click', () => { const cur = S.nav.path, n = prompt('New folder name', cur.slice(cur.lastIndexOf('/') + 1)); if (n) { if (renameFolder(cur, n)) refreshAll(); } });
+  $('#btnDelFolder').addEventListener('click', () => { if (deleteFolder(S.nav.path)) refreshAll(); });
+  $('#search').addEventListener('input', e => { S.filter = e.target.value; renderTiles(); });
+
+  let dragDepth = 0;
+  const hasFiles = e => e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+  window.addEventListener('dragenter', e => { if (hasFiles(e)) { dragDepth++; document.body.classList.add('dragging'); } });
+  window.addEventListener('dragleave', e => { if (hasFiles(e) && --dragDepth <= 0) { dragDepth = 0; document.body.classList.remove('dragging'); } });
+  window.addEventListener('dragover', e => { if (hasFiles(e)) e.preventDefault(); });
+  window.addEventListener('drop', e => { dragDepth = 0; document.body.classList.remove('dragging'); if (hasFiles(e)) { e.preventDefault(); importFiles(e.dataTransfer.files); } });
+  window.addEventListener('keydown', e => {
+    const tag = (e.target.tagName || '').toLowerCase();
+    if (e.key === 'Delete' && S.sel && !S.sel.ref && !['input', 'textarea', 'select'].includes(tag)) { if (confirm('Delete "' + S.sel.name + '"?')) { deleteAsset(S.sel); refreshAll(); } }
+    if (e.key === 'Escape') menu.classList.remove('open');
+  });
+  window.addEventListener('beforeunload', e => { if (S.dirty && S.assets.length) { e.preventDefault(); e.returnValue = ''; } });
+
+  refreshAll(); select(null);
+}
+window.GBM = { S, V, TYPE, newAsset, addAsset, importFile, importFiles, buildFiles, makeZipBytes, crc32, parseOBJ, parseMat, matToJson, parseShader, shToJson, nlamObj, nlabfObj, computeProblems, parseBundle, renameAsset, cloneAsset, defMat, defSlot, defShader, select, refreshAll };
+initUI();
+</script>
+</body>
+</html>

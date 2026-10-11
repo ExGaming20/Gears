@@ -92,12 +92,24 @@ namespace Gears.Graphics
             if (_disposed) return;
             _disposed = true;
 
-            Game.Textures.Remove(ColorTexture);
-            Game.TextureByUUID.Remove(ColorTexture.UUID);
-            ColorTexture.Delete();
-
+            // The FBO/renderbuffer are exclusively this RenderTexture's own -
+            // nothing else can be pointing at them, so always free these.
             GL.DeleteFramebuffer(FBOHandle);
             if (HasDepth) GL.DeleteRenderbuffer(DepthHandle);
+
+            // The ColorTexture itself may still be retained elsewhere (e.g. a
+            // Material whose _TextureData.TextureUUID points at it) - only
+            // delete it if nothing else does.
+            if (ColorTexture.RefCount > 0)
+            {
+                Logger.Instance.LogWarning($"RenderTexture '{Name}': ColorTexture is still referenced (RefCount={ColorTexture.RefCount}), leaving it loaded after the framebuffer is freed.");
+            }
+            else
+            {
+                Game.Textures.Remove(ColorTexture);
+                Game.TextureByUUID.Remove(ColorTexture.UUID);
+                ColorTexture.Delete();
+            }
 
             GC.SuppressFinalize(this);
         }

@@ -1,0 +1,6 @@
+{
+  "Type": "RawShader",
+  "Location": "/Raw Shaders/ScreenFragment.shader",
+  "UUID": "fe8db445-442c-4eac-aca4-0fe62913b22f",
+  "Name": "ScreenFragment"
+}

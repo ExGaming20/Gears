@@ -1,0 +1,6 @@
+{
+  "Type": "RawShader",
+  "Location": "/Raw Shaders/BaseFragment.shader",
+  "UUID": "881b8aab-597d-4a43-af43-df38c7113080",
+  "Name": "BaseFragment"
+}

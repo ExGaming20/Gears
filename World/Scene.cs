@@ -33,7 +33,6 @@ namespace Gears.World
 
         public void SetMainCamera(Camera camera) => MainCamera = camera;
 
-        public static Texture? SkyBox;
 
         public Scene(string name = "Scene")
         {
@@ -57,7 +56,6 @@ namespace Gears.World
             _rootObjects.Clear();
             _pendingAdd.Clear();
             _pendingRemove.Clear();
-            SkyBox?.Delete();
         }
 
         public void Tick(double deltaTime)

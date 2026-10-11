@@ -1,8 +1,6 @@
-﻿{
+{
   "Name": "ULitShaderURP",
-
   "DrawableShader": true,
-
   "SubShaders": [
     {
       "Vertex": "BaseVertex",

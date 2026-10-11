@@ -9,8 +9,19 @@ namespace Gears.World.Components
         /// <summary>Render sort order (opaque pass layer ordering, not the semantic GameObject Layer).</summary>
         public int SortLayer { get; set; } = 0;
 
+        private Material? _material;
         /// <summary>Optional material override. If null, uses the SubMesh's material.</summary>
-        public Material? Material { get; set; }
+        public Material? Material
+        {
+            get => _material;
+            set
+            {
+                if (_material == value) return;
+                _material?.Release();
+                _material = value;
+                _material?.Retain();
+            }
+        }
 
         private MeshFilter? _meshFilter;
 
@@ -44,6 +55,7 @@ namespace Gears.World.Components
         {
             base.OnDestroy();
             _meshFilter = null;
+            Material = null;
         }
     }
 }

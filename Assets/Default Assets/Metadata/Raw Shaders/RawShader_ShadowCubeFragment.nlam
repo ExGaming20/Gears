@@ -1,0 +1,6 @@
+{
+  "Type": "RawShader",
+  "Location": "/Raw Shaders/ShadowCubeFragment.shader",
+  "UUID": "03cce53f-64f9-49f7-bf1b-b06625c43887",
+  "Name": "ShadowCubeFragment"
+}

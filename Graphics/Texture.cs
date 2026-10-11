@@ -1,4 +1,5 @@
-﻿using System.IO;
+﻿using System;
+using System.IO;
 using OpenTK.Graphics.OpenGL4;
 using OpenTK.Mathematics;
 using StbImageSharp;
@@ -14,6 +15,11 @@ namespace Gears.Graphics
         public string FilePath { get; private set; }
         public Vector2i Size { get; private set; }
 
+        // Incremented/decremented by Material.Textures's setter (and SceneManager.SkyBox's).
+        public int RefCount { get; private set; }
+        public void Retain() => RefCount++;
+        public void Release() => RefCount = Math.Max(0, RefCount - 1);
+
         private TextureTarget _target;
         private readonly PixelInternalFormat _internalFormat;
         private readonly PixelFormat _format;
@@ -25,7 +31,7 @@ namespace Gears.Graphics
 
         private static int _nextUUID = 0;
 
-        public Texture(string name, string? filePath = null, TextureData[]? textureData = null, uint[]? rawImage = null)
+        public Texture(string name, string? filePath = null, TextureData[]? textureData = null, uint[]? rawImage = null, int? explicitUUID = null)
         {
             Name = name;
             FilePath = filePath ?? "";
@@ -52,15 +58,10 @@ namespace Gears.Graphics
                 if (!File.Exists(resolvedPath))
                 {
                     Logger.Instance.LogError($"Texture file not found: {resolvedPath}");
-                    if (Game.MissingTexture != null && Game.MissingTexture != this)
-                    {
-                        Handle = Game.MissingTexture.Handle;
-                        _nextUUID = Guid.NewGuid().GetHashCode();
-                        UUID = _nextUUID;
-                        return;
-                    }
-                    Handle = -1;
-                    UUID = -1;
+                    Handle = CreateFallbackHandle(out Vector2i fallbackSize);
+                    Size = fallbackSize;
+                    _nextUUID = explicitUUID ?? Guid.NewGuid().GetHashCode();
+                    UUID = _nextUUID;
                     return;
                 }
 
@@ -104,8 +105,40 @@ namespace Gears.Graphics
             GL.GenerateMipmap((GenerateMipmapTarget)_target);
 
             Size = new Vector2i(image.Width, image.Height);
-            _nextUUID = Guid.NewGuid().GetHashCode();
+            _nextUUID = explicitUUID ?? Guid.NewGuid().GetHashCode();
             UUID = _nextUUID;
+        }
+
+        // Builds a brand new GL texture from the fallback image, with its own
+        // handle. Used on a missing-file failure instead of reusing
+        // Game.MissingTexture.Handle directly — reusing that handle meant
+        // deleting a failed-load texture deleted the shared fallback for
+        // every other texture using it too.
+        private static int CreateFallbackHandle(out Vector2i size)
+        {
+            string fallbackPath = Path.Combine("..", "..", "..", "Fallback Assets", "Textures", "Missing.png");
+            if (!File.Exists(fallbackPath))
+            {
+                Logger.Instance.LogError($"CreateFallbackHandle: fallback texture not found at '{fallbackPath}'.");
+                size = Vector2i.Zero;
+                return -1;
+            }
+
+            using FileStream stream = File.OpenRead(fallbackPath);
+            ImageResult image = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
+
+            int handle = GL.GenTexture();
+            GL.BindTexture(TextureTarget.Texture2D, handle);
+            GL.PixelStore(PixelStoreParameter.UnpackAlignment, 1);
+            GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgba, image.Width, image.Height, 0, PixelFormat.Rgba, PixelType.UnsignedByte, image.Data);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)TextureWrapMode.Repeat);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)TextureWrapMode.Repeat);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Linear);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Linear);
+            GL.GenerateMipmap(GenerateMipmapTarget.Texture2D);
+
+            size = new Vector2i(image.Width, image.Height);
+            return handle;
         }
 
         public Texture(string name, Vector2i size,
@@ -159,7 +192,8 @@ namespace Gears.Graphics
         public Texture(string name, string filePath, TextureWrapMode wrapS,
             TextureWrapMode wrapT = TextureWrapMode.ClampToEdge,
             TextureMinFilter minFilter = TextureMinFilter.LinearMipmapLinear,
-            TextureMagFilter magFilter = TextureMagFilter.Linear)
+            TextureMagFilter magFilter = TextureMagFilter.Linear,
+            int? explicitUUID = null)
         {
             Name = name;
             FilePath = "";
@@ -181,15 +215,10 @@ namespace Gears.Graphics
             if (!File.Exists(resolvedPath))
             {
                 Logger.Instance.LogError($"Texture file not found: {resolvedPath}");
-                if (Game.MissingTexture != null && Game.MissingTexture != this)
-                {
-                    Handle = Game.MissingTexture.Handle;
-                    _nextUUID = Guid.NewGuid().GetHashCode();
-                    UUID = _nextUUID;
-                    return;
-                }
-                Handle = -1;
-                UUID = -1;
+                Handle = CreateFallbackHandle(out Vector2i fallbackSize);
+                Size = fallbackSize;
+                _nextUUID = explicitUUID ?? Guid.NewGuid().GetHashCode();
+                UUID = _nextUUID;
                 return;
             }
 
@@ -210,7 +239,7 @@ namespace Gears.Graphics
             GL.GenerateMipmap(GenerateMipmapTarget.Texture2D);
 
             Size = new Vector2i(image.Width, image.Height);
-            _nextUUID = Guid.NewGuid().GetHashCode();
+            _nextUUID = explicitUUID ?? Guid.NewGuid().GetHashCode();
             UUID = _nextUUID;
         }
 

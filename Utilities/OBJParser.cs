@@ -11,7 +11,7 @@ namespace Gears.Utilities
     {
         private static readonly char[] Separators = { ' ', '\t' };
 
-        public static Mesh Parse(string name, string path)
+        public static Mesh Parse(string name, string path, int? explicitUUID = null)
         {
             List<Vector3> positions = new();
             List<Vector2> uvs = new();
@@ -97,7 +97,7 @@ namespace Gears.Utilities
             if (!HasNormals(subMeshes))
                 GenerateFlatNormals(subMeshes);
 
-            return new Mesh(name, subMeshes);
+            return new Mesh(name, subMeshes, explicitUUID);
         }
 
         private static SubMesh NewSubMesh(int materialUUID)

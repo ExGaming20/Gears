@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -13,11 +13,11 @@ namespace Gears.World
 {
     public static class SceneSerializer
     {
+        // Public so other systems (e.g. the asset bundle loader) can match a
+        // "Component" meta entry's Name to a real type without re-scanning
+        // assemblies themselves.
         private static Dictionary<string, Type>? _componentTypes;
 
-        // Scans loaded assemblies once for every non-abstract BaseComponent
-        // subtype and caches it by class name. Reflection scans are slow,
-        // this must not run per component or per load.
         public static Dictionary<string, Type> ComponentTypes
         {
             get
@@ -168,8 +168,6 @@ namespace Gears.World
             return new Vector3(ReadFloat(arr[0]), ReadFloat(arr[1]), ReadFloat(arr[2]));
         }
 
-        // Accepts a JSON number or a numeric string, so old hand-written
-        // scene files with quoted numbers still load.
         private static float ReadFloat(JsonNode? node)
         {
             if (node is not JsonValue val) return 0f;
@@ -236,7 +234,7 @@ namespace Gears.World
 
             foreach (var component in go.GetComponents<BaseComponent>())
             {
-                if (component is Transform) continue; // written as Position/Rotation/Scale, not a component entry
+                if (component is Transform) continue;
                 components[component.GetType().Name] = WriteComponent(component);
             }
 
@@ -250,7 +248,7 @@ namespace Gears.World
 
             foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
             {
-                if (!prop.CanRead || !prop.CanWrite) continue; // skip computed/readonly properties, they're derived, not data
+                if (!prop.CanRead || !prop.CanWrite) continue;
                 obj[prop.Name] = WriteValue(prop.GetValue(component), prop.PropertyType);
             }
 
@@ -282,7 +280,6 @@ namespace Gears.World
             if (type == typeof(Texture)) return ((Texture)value).Name;
             if (type == typeof(Material)) return ((Material)value).Name;
 
-            // Unknown type: drop the single field instead of failing the whole save.
             Logger.Instance.LogWarning($"Scene save: no writer for type '{type.Name}', field dropped.");
             return null;
         }

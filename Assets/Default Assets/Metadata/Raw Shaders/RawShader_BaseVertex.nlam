@@ -1,0 +1,6 @@
+{
+  "Type": "RawShader",
+  "Location": "/Raw Shaders/BaseVertex.shader",
+  "UUID": "5af74060-1770-4d5f-a414-2ffa4287742e",
+  "Name": "BaseVertex"
+}

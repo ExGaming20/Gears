@@ -1,0 +1,6 @@
+{
+  "Type": "Shader",
+  "Location": "/Shaders/LitShaderURP.nlsf",
+  "UUID": "b85b556f-5486-4812-9a46-4bce8c6548b4",
+  "Name": "LitShaderURP"
+}

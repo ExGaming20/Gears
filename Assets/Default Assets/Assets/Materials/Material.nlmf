@@ -1,0 +1,76 @@
+{
+  "Name": "Material",
+  "ShaderName": "LitShaderURP",
+  "SeeThroughType": "Opaque",
+  "BaseColor": {
+    "X": 1,
+    "Y": 1,
+    "Z": 1,
+    "W": 1
+  },
+  "EmissionColor": {
+    "X": 0,
+    "Y": 0,
+    "Z": 0,
+    "W": 0
+  },
+  "CullMode": "CCW",
+  "Metallic": 0,
+  "Roughness": 1,
+  "ReceiveShadows": true,
+  "CastShadows": true,
+  "ZWrite": true,
+  "Textures": [
+    {
+      "TextureName": "albedo",
+      "SemanticName": "albedo",
+      "TextureScale": {
+        "X": 1,
+        "Y": 1
+      },
+      "TextureOffset": {
+        "X": 0,
+        "Y": 0
+      },
+      "TextureWrap": "Repeat",
+      "TextureFilter": "Nearest",
+      "Mipmap": "NearestMipmapNearest",
+      "PixelFormat": "Rgba",
+      "TextureTarget": "Texture2D"
+    },
+    {
+      "TextureName": "normal",
+      "SemanticName": "normal",
+      "TextureScale": {
+        "X": 1,
+        "Y": 1
+      },
+      "TextureOffset": {
+        "X": 0,
+        "Y": 0
+      },
+      "TextureWrap": "Repeat",
+      "TextureFilter": "Linear",
+      "Mipmap": "LinearMipmapLinear",
+      "PixelFormat": "Rgba",
+      "TextureTarget": "Texture2D"
+    },
+    {
+      "TextureName": "roughness",
+      "SemanticName": "roughness",
+      "TextureScale": {
+        "X": 1,
+        "Y": 1
+      },
+      "TextureOffset": {
+        "X": 0,
+        "Y": 0
+      },
+      "TextureWrap": "Repeat",
+      "TextureFilter": "Linear",
+      "Mipmap": "LinearMipmapLinear",
+      "PixelFormat": "Rgba",
+      "TextureTarget": "Texture2D"
+    }
+  ]
+}

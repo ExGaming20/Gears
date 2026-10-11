@@ -10,16 +10,21 @@ namespace Gears.Graphics
         public string Name { get; set; }
         public int UUID { get; }
 
+        // Incremented/decremented by Material.ShaderUUID's setter.
+        public int RefCount { get; private set; }
+        public void Retain() => RefCount++;
+        public void Release() => RefCount = Math.Max(0, RefCount - 1);
+
         // O(1) uniform existence checks — replaces the old List<Uniform> AvailableUniforms
         public HashSet<string> UniformNameSet { get; private set; } = new();
 
         private static int _nextUUID = 0;
 
-        public Shader(ShaderProgram Shader, string name)
+        public Shader(ShaderProgram Shader, string name, int? explicitUUID = null)
         {
             this.shader = Shader;
             this.Name = name;
-            _nextUUID = Guid.NewGuid().GetHashCode();
+            _nextUUID = explicitUUID ?? Guid.NewGuid().GetHashCode();
             UUID = _nextUUID;
             RefreshUniforms();
         }

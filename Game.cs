@@ -27,10 +27,11 @@ namespace Gears
         public static List<Mesh> Meshes = new List<Mesh>();
         public static List<Texture> Textures = new List<Texture>();
         public static List<Shader> Shaders = new List<Shader>();
+        public static List<AssetBundle> Bundles = new List<AssetBundle>();
 
         public static readonly Dictionary<int, Texture> TextureByUUID = new();
         public static readonly Dictionary<int, Material> MaterialByUUID = new();
-        private readonly Dictionary<int, Shader> _shaderByUUID = new();
+        public static readonly Dictionary<int, Shader> ShaderByUUID = new();
 
         private readonly Dictionary<SubMesh, DrawMesh> _meshCache = new();
 
@@ -40,8 +41,6 @@ namespace Gears
 
         private static readonly List<RenderRequest> ProbeCaptureQueue = new List<RenderRequest>();
         private static bool _capturingForProbe = false;
-
-        public static List<AssetBundle> Bundles = new List<AssetBundle>();
 
         public static string ActiveCameraName = "MainCamera";
 
@@ -102,16 +101,18 @@ namespace Gears
 
             Scene activeScene = SceneManager.ActiveScene!;
 
-            Scene.SkyBox = new Texture("SkyBox", "CubeMap.png", TextureWrapMode.Repeat, TextureWrapMode.ClampToEdge);
+            SceneManager.SkyBox = new Texture("SkyBox", "CubeMap.png", TextureWrapMode.Repeat, TextureWrapMode.ClampToEdge);
 
             MissingShader = AssetLoader.ReturnShaderMissing("Missing", "Missing");
             MissingTexture = AssetLoader.ReturnTextureMissing("MissingTexture", Path.Combine("Missing.png"));
             MissingMaterial = AssetLoader.ReturnMaterialMissing("Missing", Path.Combine("Fallback Assets", "Materials", "Missing"));
             MissingMesh = AssetLoader.ReturnMeshMissing("Missing", "Missing");
 
-            AssetLoader.LoadAllAssets();
+            Bundles.Add(AssetBundleLoader.LoadAssetBundle("Default Assets"));
 
-            foreach (var shader in Shaders) _shaderByUUID[shader.UUID] = shader;
+            //AssetLoader.LoadAllAssets();
+
+            foreach (var shader in Shaders) ShaderByUUID[shader.UUID] = shader;
             foreach (var texture in Textures) TextureByUUID[texture.UUID] = texture;
             foreach (var material in Materials) MaterialByUUID[material.UUID] = material;
 
@@ -199,7 +200,7 @@ namespace Gears
             lightObj2.GetComponent<Light>().lightType = Light.LightType.Directional;
             lightObj2.GetComponent<Light>().shadowType = Light.ShadowType.Soft;
             lightObj2.GetComponent<Transform>().Position = new Vector3(10, 0, 0);
-            lightObj2.GetComponent<Transform>().EulerAngles = new Vector3(-60, -35, 0);
+            lightObj2.GetComponent<Transform>().EulerAngles = new Vector3(-60, 30, 0);
             lightObj2.GetComponent<Light>().intensity = 0.5f;
             lightObj2.GetComponent<Light>().color = new Color4(1f, 0f, 0f, 1f);
             lightObj2.GetComponent<Light>().shadowResolution = Light.ShadowResolution.Medium;
@@ -224,10 +225,9 @@ namespace Gears
             var Eprob = new GameObject("Eprob");
             activeScene.MakeGameObject(Eprob);
             Eprob.AddComponent<EProbe>();
-            Eprob.GetComponent<EProbe>().Far = 50f;
+            Eprob.GetComponent<EProbe>().Far = 25f;
             Eprob.GetComponent<EProbe>().Near = 0.1f;
             Eprob.GetComponent<EProbe>().Resolution = 128;
-            Eprob.GetComponent<EProbe>().Domein = Vector3.One * 50;
             Eprob.Transform.Position = new Vector3(0, -2.5f, 0);
         }
 
@@ -392,12 +392,16 @@ namespace Gears
             foreach (var dm in _meshCache.Values) dm.Dispose();
             _meshCache.Clear();
 
-            _shaderByUUID.Clear();
+            ShaderByUUID.Clear();
             TextureByUUID.Clear();
             MaterialByUUID.Clear();
 
             LightManager.Clear();
             ProbeManager.Clear();
+
+            Texture? skyBox = SceneManager.SkyBox;
+            SceneManager.SkyBox = null; // releases
+            skyBox?.Delete();           // SkyBox isn't in Game.Textures, so UnloadAllAssets below never touches it
 
             AssetLoader.UnloadAllAssets();
 
@@ -449,6 +453,19 @@ namespace Gears
             return drawMesh;
         }
 
+        /// <summary>
+        /// Frees the GPU buffers (VAO/VBO) cached for every SubMesh of this mesh.
+        /// Used when unloading a single mesh while the app keeps running.
+        /// </summary>
+        public void ReleaseMeshFromCache(Mesh mesh)
+        {
+            foreach (var subMesh in mesh.SubMeshes)
+            {
+                if (_meshCache.Remove(subMesh, out DrawMesh? drawMesh))
+                    drawMesh.Dispose();
+            }
+        }
+
         private void FlushRenderQueue(Matrix4 view, Matrix4 projection, List<RenderRequest>? queueOverride = null)
         {
             var queue = queueOverride ?? RenderQueue;
@@ -464,7 +481,7 @@ namespace Gears
 
                 if (!haveShader || req.material.ShaderUUID != currentShaderUUID)
                 {
-                    if (!_shaderByUUID.TryGetValue(req.material.ShaderUUID, out currentShader))
+                    if (!ShaderByUUID.TryGetValue(req.material.ShaderUUID, out currentShader))
                         currentShader = MissingShader;
                     currentShaderUUID = req.material.ShaderUUID;
                     haveShader = true;

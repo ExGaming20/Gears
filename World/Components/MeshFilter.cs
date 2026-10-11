@@ -5,7 +5,18 @@ namespace Gears.World.Components
 {
     public class MeshFilter : BaseComponent
     {
-        public Mesh? Mesh { get; set; }
+        private Mesh? _mesh;
+        public Mesh? Mesh
+        {
+            get => _mesh;
+            set
+            {
+                if (_mesh == value) return;
+                _mesh?.Release();
+                _mesh = value;
+                _mesh?.Retain();
+            }
+        }
 
         public MeshFilter()
         {

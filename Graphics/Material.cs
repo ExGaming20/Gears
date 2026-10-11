@@ -1,5 +1,6 @@
 ﻿using System;
 using OpenTK.Mathematics;
+using Gears;
 
 namespace Gears.Graphics
 {
@@ -8,8 +9,25 @@ namespace Gears.Graphics
         public string Name { get; set; }
         public int UUID { get; }
 
+        // Incremented/decremented by MeshRenderer.Material's setter.
+        public int RefCount { get; private set; }
+        public void Retain() => RefCount++;
+        public void Release() => RefCount = Math.Max(0, RefCount - 1);
+
         public string ShaderName { get; set; } = string.Empty;
-        public int ShaderUUID { get; set; }
+
+        private int _shaderUUID;
+        public int ShaderUUID
+        {
+            get => _shaderUUID;
+            set
+            {
+                if (_shaderUUID == value) return;
+                FindLoadedAssets.FindShader(null, _shaderUUID)?.Release();
+                _shaderUUID = value;
+                FindLoadedAssets.FindShader(null, _shaderUUID)?.Retain();
+            }
+        }
 
         public _RenderType SeeThroughType { get; set; }
 
@@ -23,13 +41,27 @@ namespace Gears.Graphics
         public bool CastShadows { get; set; } = true;
         public bool ZWrite { get; set; } = true;
 
-        public _TextureData[] Textures { get; set; } = Array.Empty<_TextureData>();
+        private _TextureData[] _textures = Array.Empty<_TextureData>();
+        public _TextureData[] Textures
+        {
+            get => _textures;
+            set
+            {
+                foreach (var t in _textures)
+                    FindLoadedAssets.FindTexture(null, t.TextureUUID)?.Release();
+
+                _textures = value ?? Array.Empty<_TextureData>();
+
+                foreach (var t in _textures)
+                    FindLoadedAssets.FindTexture(null, t.TextureUUID)?.Retain();
+            }
+        }
 
         private static int _nextUUID = Guid.NewGuid().GetHashCode();
 
-        public Material()
+        public Material(int? explicitUUID = null)
         {
-            UUID = _nextUUID++;
+            UUID = explicitUUID ?? _nextUUID++;
             Name = $"Material_{UUID}";
 
             ShaderName = "Standard";

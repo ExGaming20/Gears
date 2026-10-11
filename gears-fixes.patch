@@ -1,0 +1,1482 @@
+diff --git a/AssetBundle.cs b/AssetBundle.cs
+new file mode 100644
+index 0000000..4b876a0
+--- /dev/null
++++ b/AssetBundle.cs
+@@ -0,0 +1,351 @@
++using System;
++using System.Collections.Generic;
++using System.IO;
++using System.Text.Json;
++using System.Text.Json.Serialization;
++using Gears.World;
++using Gears.Graphics;
++using Gears.Utilities;
++
++namespace Gears
++{
++    // A loaded asset bundle. Holds the bundle's own identity and the UUIDs
++    // of everything it loaded. The loaded objects themselves live in the
++    // same Game.Textures/Meshes/Materials/Shaders lists as every other asset.
++    public class AssetBundle
++    {
++        public string Name { get; set; }
++        public string UUID { get; }
++        public string RootPath { get; set; }
++
++        public List<string> AssetUUIDs { get; } = new();
++
++        public AssetBundle(string name, string uuid, string rootPath)
++        {
++            Name = name;
++            UUID = uuid;
++            RootPath = rootPath;
++        }
++    }
++
++    public static class AssetBundleLoader
++    {
++        // Where a bare bundle name (not a path) is looked up.
++        public static string BundlesRoot = Path.Combine("..", "..", "..", "Bundles");
++
++        private static readonly JsonSerializerOptions ReadOptions = new() { PropertyNameCaseInsensitive = true };
++
++        private sealed class BundleMeta
++        {
++            public string? Name { get; set; }
++
++            [JsonPropertyName("Asset")]
++            public List<string>? Asset { get; set; }
++
++            public string? UUID { get; set; }
++        }
++
++        private sealed class AssetMeta
++        {
++            public string? Type { get; set; }
++            public string? Location { get; set; }
++            public string? UUID { get; set; }
++            public string? Name { get; set; }
++        }
++
++        // -----------------------------------------------------------------
++        // Load
++        // -----------------------------------------------------------------
++
++        public static AssetBundle LoadAssetBundle(string pathOrName)
++        {
++            string root = ResolveBundleRoot(pathOrName);
++
++            if (!Directory.Exists(root))
++            {
++                Logger.Instance.LogError($"LoadAssetBundle: bundle folder not found at '{root}'.");
++                return new AssetBundle(pathOrName, Guid.NewGuid().ToString(), root);
++            }
++
++            var nlabf = ReadBundleMeta(root);
++            string bundleName = nlabf?.Name ?? Path.GetFileName(root.TrimEnd(Path.DirectorySeparatorChar));
++            string bundleUuid = nlabf?.UUID ?? Guid.NewGuid().ToString();
++
++            var bundle = new AssetBundle(bundleName, bundleUuid, root);
++
++            string metadataRoot = Path.Combine(root, "Metadata");
++            if (!Directory.Exists(metadataRoot))
++            {
++                Logger.Instance.LogWarning($"LoadAssetBundle: '{bundleName}' has no Metadata folder, nothing to load.");
++                Game.Bundles.Add(bundle);
++                return bundle;
++            }
++
++            foreach (string metaFile in Directory.GetFiles(metadataRoot, "*.nlam", SearchOption.AllDirectories))
++            {
++                AssetMeta? meta;
++                try
++                {
++                    meta = JsonSerializer.Deserialize<AssetMeta>(File.ReadAllText(metaFile), ReadOptions);
++                }
++                catch (JsonException e)
++                {
++                    Logger.Instance.LogError($"LoadAssetBundle: '{metaFile}' failed to parse ({e.Message}), skipped.");
++                    continue;
++                }
++
++                if (meta == null || meta.UUID == null || meta.Type == null || meta.Name == null)
++                {
++                    Logger.Instance.LogWarning($"LoadAssetBundle: '{metaFile}' is missing Type/Name/UUID, skipped.");
++                    continue;
++                }
++
++                LoadAssetFromMeta(bundle, root, meta);
++                bundle.AssetUUIDs.Add(meta.UUID);
++            }
++
++            Game.Bundles.Add(bundle);
++            return bundle;
++        }
++
++        private static string ResolveBundleRoot(string pathOrName)
++        {
++            if (Directory.Exists(pathOrName))
++                return Path.GetFullPath(pathOrName);
++
++            return Path.GetFullPath(Path.Combine(BundlesRoot, pathOrName));
++        }
++
++        private static BundleMeta? ReadBundleMeta(string root)
++        {
++            string nlabfPath = Path.Combine(root, "Bundle.nlabf");
++            if (!File.Exists(nlabfPath)) return null;
++
++            try
++            {
++                return JsonSerializer.Deserialize<BundleMeta>(File.ReadAllText(nlabfPath), ReadOptions);
++            }
++            catch (JsonException e)
++            {
++                Logger.Instance.LogError($"LoadAssetBundle: 'Bundle.nlabf' at '{root}' failed to parse ({e.Message}).");
++                return null;
++            }
++        }
++
++        private static void LoadAssetFromMeta(AssetBundle bundle, string bundleRoot, AssetMeta meta)
++        {
++            string name = meta.Name!;
++
++            string assetPath = meta.Location != null
++                ? Path.Combine(bundleRoot, "Assets", meta.Location.TrimStart('/', '\\').Replace('/', Path.DirectorySeparatorChar))
++                : "";
++
++            // Deterministic across runs for the same nlam UUID: Guid.GetHashCode()
++            // hashes the GUID's actual bytes. string.GetHashCode() would NOT work
++            // here - .NET randomizes it per process by default.
++            int? uuid = Guid.TryParse(meta.UUID, out Guid parsed) ? parsed.GetHashCode() : null;
++            if (uuid == null)
++                Logger.Instance.LogWarning($"Bundle '{bundle.Name}': '{name}' has a malformed UUID ('{meta.UUID}'), falling back to a random one.");
++
++            switch (meta.Type)
++            {
++                case "Texture":
++                    if (!File.Exists(assetPath))
++                    {
++                        Logger.Instance.LogWarning($"Bundle '{bundle.Name}': texture '{name}' missing at '{assetPath}', skipped.");
++                        break;
++                    }
++                    AssetLoader.LoadTexture(name, assetPath, uuid);
++                    break;
++
++                case "Model":
++                    if (!File.Exists(assetPath))
++                    {
++                        Logger.Instance.LogWarning($"Bundle '{bundle.Name}': model '{name}' missing at '{assetPath}', skipped.");
++                        break;
++                    }
++                    AssetLoader.LoadMesh(name, assetPath, uuid);
++                    break;
++
++                case "Shader":
++                    if (!File.Exists(assetPath))
++                    {
++                        Logger.Instance.LogWarning($"Bundle '{bundle.Name}': shader '{name}' missing at '{assetPath}', skipped.");
++                        break;
++                    }
++                    AssetLoader.LoadShader(name, assetPath, uuid);
++                    break;
++
++                case "Material":
++                    if (!File.Exists(assetPath))
++                    {
++                        Logger.Instance.LogWarning($"Bundle '{bundle.Name}': material '{name}' missing at '{assetPath}', skipped.");
++                        break;
++                    }
++                    AssetLoader.LoadMaterial(name, assetPath, uuid);
++                    break;
++
++                case "Scene":
++                    if (!File.Exists(assetPath))
++                    {
++                        Logger.Instance.LogWarning($"Bundle '{bundle.Name}': scene '{name}' missing at '{assetPath}', skipped.");
++                        break;
++                    }
++                    Scene parsedScene = SceneSerializer.Load(File.ReadAllText(assetPath), name);
++                    SceneManager.Register(name, () => parsedScene); // keyed by Name, matching how Game.cs registers/loads scenes
++                    break;
++
++                case "Component":
++                    if (!SceneSerializer.ComponentTypes.ContainsKey(name))
++                        Logger.Instance.LogWarning($"Bundle '{bundle.Name}': component type '{name}' not found in engine, skipped.");
++                    break;
++
++                case "RawShader":
++                    if (!File.Exists(assetPath))
++                        Logger.Instance.LogWarning($"Bundle '{bundle.Name}': raw shader '{name}' missing at '{assetPath}', skipped.");
++                    break;
++
++                default:
++                    Logger.Instance.LogWarning($"Bundle '{bundle.Name}': unknown asset type '{meta.Type}' for '{name}', skipped.");
++                    break;
++            }
++        }
++
++        // -----------------------------------------------------------------
++        // Unload
++        // -----------------------------------------------------------------
++
++        public static void UnloadAssetBundle(AssetBundle bundle)
++        {
++            if (bundle == null) return;
++
++            string metadataRoot = Path.Combine(bundle.RootPath, "Metadata");
++            if (!Directory.Exists(metadataRoot))
++            {
++                Logger.Instance.LogWarning($"UnloadAssetBundle: '{bundle.Name}' has no Metadata folder to re-scan; removing the bundle entry only.");
++                Game.Bundles.Remove(bundle);
++                return;
++            }
++
++            var metas = new List<AssetMeta>();
++            foreach (string metaFile in Directory.GetFiles(metadataRoot, "*.nlam", SearchOption.AllDirectories))
++            {
++                AssetMeta? meta;
++                try { meta = JsonSerializer.Deserialize<AssetMeta>(File.ReadAllText(metaFile), ReadOptions); }
++                catch (JsonException) { continue; } // already logged once on load
++
++                if (meta?.Type != null && meta.Name != null)
++                    metas.Add(meta);
++            }
++
++            var deletedTextureHandles = new HashSet<int>();
++
++            // Material/Model first: unloading a Material releases the retains
++            // it held on its Textures/Shader. Doing this before the Texture/
++            // Shader pass means RefCount, checked below, only reflects usage
++            // genuinely outside this bundle.
++            foreach (var meta in metas)
++            {
++                if (meta.Type is "Material" or "Model")
++                    UnloadAssetFromMeta(bundle, meta, deletedTextureHandles);
++            }
++
++            foreach (var meta in metas)
++            {
++                if (meta.Type is not "Material" and not "Model")
++                    UnloadAssetFromMeta(bundle, meta, deletedTextureHandles);
++            }
++
++            Game.Bundles.Remove(bundle);
++        }
++
++        private static void UnloadAssetFromMeta(AssetBundle bundle, AssetMeta meta, HashSet<int> deletedTextureHandles)
++        {
++            string name = meta.Name!;
++
++            switch (meta.Type)
++            {
++                case "Texture":
++                {
++                    var texture = FindLoadedAssets.FindTexture(name);
++                    if (texture == null || texture == Game.MissingTexture) break;
++
++                    if (texture.RefCount > 0)
++                    {
++                        Logger.Instance.LogWarning($"UnloadAssetBundle '{bundle.Name}': texture '{name}' still in use (RefCount={texture.RefCount}), left loaded.");
++                        break;
++                    }
++
++                    Game.Textures.Remove(texture);
++                    Game.TextureByUUID.Remove(texture.UUID);
++                    if (deletedTextureHandles.Add(texture.Handle))
++                        texture.Delete();
++                    break;
++                }
++
++                case "Shader":
++                {
++                    var shader = FindLoadedAssets.FindShader(name);
++                    if (shader == null || shader == Game.MissingShader) break;
++
++                    if (shader.RefCount > 0)
++                    {
++                        Logger.Instance.LogWarning($"UnloadAssetBundle '{bundle.Name}': shader '{name}' still in use (RefCount={shader.RefCount}), left loaded.");
++                        break;
++                    }
++
++                    Game.Shaders.Remove(shader);
++                    Game.ShaderByUUID.Remove(shader.UUID);
++                    shader.DeleteShader();
++                    break;
++                }
++
++                case "Material":
++                {
++                    var material = FindLoadedAssets.FindMaterial(name);
++                    if (material == null || material == Game.MissingMaterial) break;
++
++                    if (material.RefCount > 0)
++                    {
++                        Logger.Instance.LogWarning($"UnloadAssetBundle '{bundle.Name}': material '{name}' still in use (RefCount={material.RefCount}), left loaded.");
++                        break;
++                    }
++
++                    material.Textures = Array.Empty<Material._TextureData>(); // releases every texture it retained
++                    material.ShaderUUID = 0;                                 // releases the shader it retained
++                    Game.Materials.Remove(material);
++                    Game.MaterialByUUID.Remove(material.UUID);
++                    break;
++                }
++
++                case "Model":
++                {
++                    var mesh = FindLoadedAssets.FindMesh(name);
++                    if (mesh == null || mesh == Game.MissingMesh) break;
++
++                    if (mesh.RefCount > 0)
++                    {
++                        Logger.Instance.LogWarning($"UnloadAssetBundle '{bundle.Name}': model '{name}' still in use (RefCount={mesh.RefCount}), left loaded.");
++                        break;
++                    }
++
++                    Game.Instance?.ReleaseMeshFromCache(mesh);
++                    Game.Meshes.Remove(mesh);
++                    mesh.Dispose();
++                    break;
++                }
++
++                case "Scene":
++                    if (SceneManager.IsLoaded(name))
++                        Logger.Instance.LogWarning($"UnloadAssetBundle '{bundle.Name}': scene '{name}' is still loaded; dropping the registration but leaving it running.");
++                    SceneManager.Unregister(name);
++                    break;
++
++                case "Component":
++                case "RawShader":
++                    // Nothing was loaded as an object for these, nothing to free.
++                    break;
++            }
++        }
++    }
++}
+diff --git a/AssetLoader.cs b/AssetLoader.cs
+index f482cc9..35d154f 100644
+--- a/AssetLoader.cs
++++ b/AssetLoader.cs
+@@ -9,7 +9,7 @@ namespace Gears
+ {
+     public class AssetLoader
+     {
+-        public static void LoadShader(string name, string path)
++        public static void LoadShader(string name, string path, int? explicitUUID = null)
+         {
+             if (!Path.IsPathFullyQualified(path))
+                 path = Path.Combine("..", "..", "..", "Assets", "Shaders", path + ".nlsf");
+@@ -17,7 +17,7 @@ namespace Gears
+             if (!File.Exists(path))
+             {
+                 Logger.Instance.LogError($"Shader file not found: {path}");
+-                Game.Shaders.Add(Game.MissingShader);
++                ReturnShaderMissing(name, "Missing"); // self-adds
+ 
+                 return;
+             }
+@@ -44,8 +44,9 @@ namespace Gears
+                     }
+                 }
+ 
+-                Shader shader = new Shader(new ShaderProgram(vertexPath, fragmentPath, geometryPath, null, true), name);
++                Shader shader = new Shader(new ShaderProgram(vertexPath, fragmentPath, geometryPath, null, true), name, explicitUUID);
+                 Game.Shaders.Add(shader);
++                Game.ShaderByUUID[shader.UUID] = shader;
+             }
+             else
+             {
+@@ -59,13 +60,14 @@ namespace Gears
+                     }
+                 }
+ 
+-                Shader shader = new Shader(new ShaderProgram(null, null, null, computePath), name);
++                Shader shader = new Shader(new ShaderProgram(null, null, null, computePath), name, explicitUUID);
+                 shader.ReloadShader();
+                 Game.Shaders.Add(shader);
++                Game.ShaderByUUID[shader.UUID] = shader;
+             }
+         }
+ 
+-        public static void LoadTexture(string name, string path)
++        public static void LoadTexture(string name, string path, int? explicitUUID = null)
+         {
+             if (!Path.IsPathFullyQualified(path))
+                 path = Path.GetFullPath(Path.Combine("..", "..", "..", "Assets", "Textures", Path.GetFileName(path)));
+@@ -78,12 +80,13 @@ namespace Gears
+                 new TextureData { Type = TextureDataType.PixelFormat,     Value = TextureDataValue.Rgba               },
+                 new TextureData { Type = TextureDataType.TextureTarget,   Value = TextureDataValue.Texture2D          },
+                 new TextureData { Type = TextureDataType.ColorComponents, Value = TextureDataValue.Rgba               }
+-            });
++            }, explicitUUID: explicitUUID);
+ 
+             Game.Textures.Add(texture);
++            Game.TextureByUUID[texture.UUID] = texture;
+         }
+ 
+-        public static void LoadMaterial(string name, string path)
++        public static void LoadMaterial(string name, string path, int? explicitUUID = null)
+         {
+             if (!Path.IsPathFullyQualified(path))
+                 path = Path.Combine("..", "..", "..", "Assets", "Materials", path + ".nlmf");
+@@ -91,7 +94,7 @@ namespace Gears
+             if (!File.Exists(path))
+             {
+                 Logger.Instance.LogError($"Material file not found: {path}");
+-                Game.Materials.Add(Game.MissingMaterial);
++                ReturnMaterialMissing(name, "Missing"); // self-adds
+ 
+                 return;
+             }
+@@ -140,11 +143,13 @@ namespace Gears
+                     if (texture != null)
+                     {
+                         TextureData[] extractedData = ExtractTextureData(tex);
+-                        texture = new Texture(texture.Name, texture.FilePath, extractedData);
++                        // Per-material variant with its own wrap/filter settings, added as its own
++                        // entry. Swapping it into the shared slot orphaned the original (GL handle
++                        // never deleted) and repeated that leak on every later material load.
++                        texture = new Texture($"{texture.Name}__{name}", texture.FilePath, extractedData);
+ 
+-                        int index = Game.Textures.FindIndex(t => t.Name == textureName);
+-                        if (index >= 0)
+-                            Game.Textures[index] = texture;
++                        Game.Textures.Add(texture);
++                        Game.TextureByUUID[texture.UUID] = texture;
+                     }
+ 
+                     textures.Add(new Material._TextureData
+@@ -158,7 +163,7 @@ namespace Gears
+                 }
+             }
+ 
+-            Material material = new Material
++            Material material = new Material(explicitUUID)
+             {
+                 Name = name,
+                 ShaderName = shaderName,
+@@ -186,9 +191,10 @@ namespace Gears
+             }
+ 
+             Game.Materials.Add(material);
++            Game.MaterialByUUID[material.UUID] = material;
+         }
+ 
+-        public static void LoadMesh(string name, string path)
++        public static void LoadMesh(string name, string path, int? explicitUUID = null)
+         {
+             if (!Path.IsPathFullyQualified(path))
+                 path = Path.Combine("..", "..", "..", "Assets", "Models", path + ".obj");
+@@ -196,12 +202,12 @@ namespace Gears
+             if (!File.Exists(path))
+             {
+                 Logger.Instance.LogError($"Mesh file not found: {path}");
+-                Game.Meshes.Add(Game.MissingMesh);
++                Game.Meshes.Add(ReturnMeshMissing(name, "Missing")); // fresh mesh with its own SubMesh data
+ 
+                 return;
+             }
+ 
+-            Mesh mesh = OBJParser.Parse(name, path);
++            Mesh mesh = OBJParser.Parse(name, path, explicitUUID);
+             Game.Meshes.Add(mesh);
+         }
+ 
+@@ -308,6 +314,7 @@ namespace Gears
+                 Shader shader = new Shader(new ShaderProgram(vertexPath, fragmentPath, geometryPath, null, true), name);
+ 
+                 Game.Shaders.Add(shader);
++                Game.ShaderByUUID[shader.UUID] = shader;
+ 
+                 return shader;
+             }
+@@ -407,6 +414,7 @@ namespace Gears
+             }
+ 
+             Game.Materials.Add(material);
++            Game.MaterialByUUID[material.UUID] = material;
+ 
+             return material;
+         }
+@@ -424,6 +432,7 @@ namespace Gears
+             });
+ 
+             Game.Textures.Add(texture);
++            Game.TextureByUUID[texture.UUID] = texture;
+ 
+             return texture;
+         }
+diff --git a/Game.cs b/Game.cs
+index 7183140..9e29e62 100644
+--- a/Game.cs
++++ b/Game.cs
+@@ -27,10 +27,11 @@ namespace Gears
+         public static List<Mesh> Meshes = new List<Mesh>();
+         public static List<Texture> Textures = new List<Texture>();
+         public static List<Shader> Shaders = new List<Shader>();
++        public static List<AssetBundle> Bundles = new List<AssetBundle>();
+ 
+         public static readonly Dictionary<int, Texture> TextureByUUID = new();
+         public static readonly Dictionary<int, Material> MaterialByUUID = new();
+-        private readonly Dictionary<int, Shader> _shaderByUUID = new();
++        public static readonly Dictionary<int, Shader> ShaderByUUID = new();
+ 
+         private readonly Dictionary<SubMesh, DrawMesh> _meshCache = new();
+ 
+@@ -100,7 +101,7 @@ namespace Gears
+ 
+             Scene activeScene = SceneManager.ActiveScene!;
+ 
+-            Scene.SkyBox = new Texture("SkyBox", "CubeMap.png", TextureWrapMode.Repeat, TextureWrapMode.ClampToEdge);
++            SceneManager.SkyBox = new Texture("SkyBox", "CubeMap.png", TextureWrapMode.Repeat, TextureWrapMode.ClampToEdge);
+ 
+             MissingShader = AssetLoader.ReturnShaderMissing("Missing", "Missing");
+             MissingTexture = AssetLoader.ReturnTextureMissing("MissingTexture", Path.Combine("Missing.png"));
+@@ -109,7 +110,7 @@ namespace Gears
+ 
+             AssetLoader.LoadAllAssets();
+ 
+-            foreach (var shader in Shaders) _shaderByUUID[shader.UUID] = shader;
++            foreach (var shader in Shaders) ShaderByUUID[shader.UUID] = shader;
+             foreach (var texture in Textures) TextureByUUID[texture.UUID] = texture;
+             foreach (var material in Materials) MaterialByUUID[material.UUID] = material;
+ 
+@@ -389,13 +390,17 @@ namespace Gears
+             foreach (var dm in _meshCache.Values) dm.Dispose();
+             _meshCache.Clear();
+ 
+-            _shaderByUUID.Clear();
++            ShaderByUUID.Clear();
+             TextureByUUID.Clear();
+             MaterialByUUID.Clear();
+ 
+             LightManager.Clear();
+             ProbeManager.Clear();
+ 
++            Texture? skyBox = SceneManager.SkyBox;
++            SceneManager.SkyBox = null; // releases
++            skyBox?.Delete();           // SkyBox isn't in Game.Textures, so UnloadAllAssets below never touches it
++
+             AssetLoader.UnloadAllAssets();
+ 
+             base.OnUnload();
+@@ -461,7 +466,7 @@ namespace Gears
+ 
+                 if (!haveShader || req.material.ShaderUUID != currentShaderUUID)
+                 {
+-                    if (!_shaderByUUID.TryGetValue(req.material.ShaderUUID, out currentShader))
++                    if (!ShaderByUUID.TryGetValue(req.material.ShaderUUID, out currentShader))
+                         currentShader = MissingShader;
+                     currentShaderUUID = req.material.ShaderUUID;
+                     haveShader = true;
+diff --git a/Graphics/DrawMesh.cs b/Graphics/DrawMesh.cs
+index 906f809..69fbf71 100644
+--- a/Graphics/DrawMesh.cs
++++ b/Graphics/DrawMesh.cs
+@@ -125,7 +125,7 @@ namespace Gears.Graphics
+             // takes that unit's index as an int. Passing the Texture object straight into
+             // SetUniform (as this used to do for skyBox) doesn't work — ShaderProgram.SetUniform
+             // only understands bool/int/float/Vector2/3/4/Matrix4 and silently no-ops otherwise.
+-            Texture? skyBox = Scene.SkyBox;
++            Texture? skyBox = SceneManager.SkyBox;
+             if (skyBox != null && textureUnit < _maxTextureUnits && DoesUniformExist(shader, "skyBox"))
+             {
+                 skyBox.Use(textureUnit);
+diff --git a/Graphics/Material.cs b/Graphics/Material.cs
+index 2f9e176..9692dec 100644
+--- a/Graphics/Material.cs
++++ b/Graphics/Material.cs
+@@ -1,5 +1,6 @@
+ ﻿using System;
+ using OpenTK.Mathematics;
++using Gears;
+ 
+ namespace Gears.Graphics
+ {
+@@ -8,8 +9,25 @@ namespace Gears.Graphics
+         public string Name { get; set; }
+         public int UUID { get; }
+ 
++        // Incremented/decremented by MeshRenderer.Material's setter.
++        public int RefCount { get; private set; }
++        public void Retain() => RefCount++;
++        public void Release() => RefCount = Math.Max(0, RefCount - 1);
++
+         public string ShaderName { get; set; } = string.Empty;
+-        public int ShaderUUID { get; set; }
++
++        private int _shaderUUID;
++        public int ShaderUUID
++        {
++            get => _shaderUUID;
++            set
++            {
++                if (_shaderUUID == value) return;
++                FindLoadedAssets.FindShader(null, _shaderUUID)?.Release();
++                _shaderUUID = value;
++                FindLoadedAssets.FindShader(null, _shaderUUID)?.Retain();
++            }
++        }
+ 
+         public _RenderType SeeThroughType { get; set; }
+ 
+@@ -23,13 +41,27 @@ namespace Gears.Graphics
+         public bool CastShadows { get; set; } = true;
+         public bool ZWrite { get; set; } = true;
+ 
+-        public _TextureData[] Textures { get; set; } = Array.Empty<_TextureData>();
++        private _TextureData[] _textures = Array.Empty<_TextureData>();
++        public _TextureData[] Textures
++        {
++            get => _textures;
++            set
++            {
++                foreach (var t in _textures)
++                    FindLoadedAssets.FindTexture(null, t.TextureUUID)?.Release();
++
++                _textures = value ?? Array.Empty<_TextureData>();
++
++                foreach (var t in _textures)
++                    FindLoadedAssets.FindTexture(null, t.TextureUUID)?.Retain();
++            }
++        }
+ 
+         private static int _nextUUID = Guid.NewGuid().GetHashCode();
+ 
+-        public Material()
++        public Material(int? explicitUUID = null)
+         {
+-            UUID = _nextUUID++;
++            UUID = explicitUUID ?? _nextUUID++;
+             Name = $"Material_{UUID}";
+ 
+             ShaderName = "Standard";
+diff --git a/Graphics/Mesh.cs b/Graphics/Mesh.cs
+index e73b5ab..50840bd 100644
+--- a/Graphics/Mesh.cs
++++ b/Graphics/Mesh.cs
+@@ -9,13 +9,20 @@ namespace Gears.Graphics
+         public int UUID { get; }
+         public List<SubMesh> SubMeshes { get; set; } = new();
+ 
++        // Incremented/decremented by MeshFilter.Mesh's setter. A real count
++        // instead of a scan, so unload can check "is anything using this"
++        // in O(1) instead of walking every loaded scene's components.
++        public int RefCount { get; private set; }
++        public void Retain() => RefCount++;
++        public void Release() => RefCount = Math.Max(0, RefCount - 1);
++
+         private static int _nextUUID = 0;
+ 
+-        public Mesh(string name, List<SubMesh>? subMeshes = null)
++        public Mesh(string name, List<SubMesh>? subMeshes = null, int? explicitUUID = null)
+         {
+             Name = name;
+             SubMeshes = subMeshes ?? new List<SubMesh>();
+-            _nextUUID = Guid.NewGuid().GetHashCode();
++            _nextUUID = explicitUUID ?? Guid.NewGuid().GetHashCode();
+             UUID = _nextUUID;
+         }
+ 
+@@ -26,9 +33,10 @@ namespace Gears.Graphics
+                 subMesh.Vertices.Clear();
+                 subMesh.UVs.Clear();
+                 subMesh.Normals.Clear();
++                subMesh.MaterialUUID = 0; // releases the default material this submesh retained
+             }
+ 
+             SubMeshes.Clear();
+         }
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/Graphics/RenderTexture.cs b/Graphics/RenderTexture.cs
+index dd9ae98..5bb7a3c 100644
+--- a/Graphics/RenderTexture.cs
++++ b/Graphics/RenderTexture.cs
+@@ -92,13 +92,25 @@ namespace Gears.Graphics
+             if (_disposed) return;
+             _disposed = true;
+ 
+-            Game.Textures.Remove(ColorTexture);
+-            Game.TextureByUUID.Remove(ColorTexture.UUID);
+-            ColorTexture.Delete();
+-
++            // The FBO/renderbuffer are exclusively this RenderTexture's own -
++            // nothing else can be pointing at them, so always free these.
+             GL.DeleteFramebuffer(FBOHandle);
+             if (HasDepth) GL.DeleteRenderbuffer(DepthHandle);
+ 
++            // The ColorTexture itself may still be retained elsewhere (e.g. a
++            // Material whose _TextureData.TextureUUID points at it) - only
++            // delete it if nothing else does.
++            if (ColorTexture.RefCount > 0)
++            {
++                Logger.Instance.LogWarning($"RenderTexture '{Name}': ColorTexture is still referenced (RefCount={ColorTexture.RefCount}), leaving it loaded after the framebuffer is freed.");
++            }
++            else
++            {
++                Game.Textures.Remove(ColorTexture);
++                Game.TextureByUUID.Remove(ColorTexture.UUID);
++                ColorTexture.Delete();
++            }
++
+             GC.SuppressFinalize(this);
+         }
+     }
+diff --git a/Graphics/Shader.cs b/Graphics/Shader.cs
+index 34d3dde..6f2c849 100644
+--- a/Graphics/Shader.cs
++++ b/Graphics/Shader.cs
+@@ -10,16 +10,21 @@ namespace Gears.Graphics
+         public string Name { get; set; }
+         public int UUID { get; }
+ 
++        // Incremented/decremented by Material.ShaderUUID's setter.
++        public int RefCount { get; private set; }
++        public void Retain() => RefCount++;
++        public void Release() => RefCount = Math.Max(0, RefCount - 1);
++
+         // O(1) uniform existence checks — replaces the old List<Uniform> AvailableUniforms
+         public HashSet<string> UniformNameSet { get; private set; } = new();
+ 
+         private static int _nextUUID = 0;
+ 
+-        public Shader(ShaderProgram Shader, string name)
++        public Shader(ShaderProgram Shader, string name, int? explicitUUID = null)
+         {
+             this.shader = Shader;
+             this.Name = name;
+-            _nextUUID = Guid.NewGuid().GetHashCode();
++            _nextUUID = explicitUUID ?? Guid.NewGuid().GetHashCode();
+             UUID = _nextUUID;
+             RefreshUniforms();
+         }
+diff --git a/Graphics/SubMesh.cs b/Graphics/SubMesh.cs
+index 7c4c002..390544f 100644
+--- a/Graphics/SubMesh.cs
++++ b/Graphics/SubMesh.cs
+@@ -1,4 +1,5 @@
+-﻿using OpenTK.Mathematics;
++﻿using Gears;
++using OpenTK.Mathematics;
+ 
+ namespace Gears.Graphics
+ {
+@@ -8,7 +9,21 @@ namespace Gears.Graphics
+         public List<Vector2> UVs = new();
+         public List<Vector3> Normals = new();
+ 
+-        public int MaterialUUID;
++        // A SubMesh's default material (used when no MeshRenderer.Material
++        // override is set) needs to retain it too, or an "unused" material
++        // that's actually still a mesh's default would get deleted.
++        private int _materialUUID;
++        public int MaterialUUID
++        {
++            get => _materialUUID;
++            set
++            {
++                if (_materialUUID == value) return;
++                FindLoadedAssets.FindMaterial(null, _materialUUID)?.Release();
++                _materialUUID = value;
++                FindLoadedAssets.FindMaterial(null, _materialUUID)?.Retain();
++            }
++        }
+ 
+         public void FreeVertexData()
+         {
+@@ -17,4 +32,4 @@ namespace Gears.Graphics
+             Normals.Clear(); Normals.TrimExcess();
+         }
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/Graphics/Texture.cs b/Graphics/Texture.cs
+index c13cc0b..1b97d6c 100644
+--- a/Graphics/Texture.cs
++++ b/Graphics/Texture.cs
+@@ -1,4 +1,5 @@
+-﻿using System.IO;
++﻿using System;
++using System.IO;
+ using OpenTK.Graphics.OpenGL4;
+ using OpenTK.Mathematics;
+ using StbImageSharp;
+@@ -14,6 +15,11 @@ namespace Gears.Graphics
+         public string FilePath { get; private set; }
+         public Vector2i Size { get; private set; }
+ 
++        // Incremented/decremented by Material.Textures's setter (and SceneManager.SkyBox's).
++        public int RefCount { get; private set; }
++        public void Retain() => RefCount++;
++        public void Release() => RefCount = Math.Max(0, RefCount - 1);
++
+         private TextureTarget _target;
+         private readonly PixelInternalFormat _internalFormat;
+         private readonly PixelFormat _format;
+@@ -25,7 +31,7 @@ namespace Gears.Graphics
+ 
+         private static int _nextUUID = 0;
+ 
+-        public Texture(string name, string? filePath = null, TextureData[]? textureData = null, uint[]? rawImage = null)
++        public Texture(string name, string? filePath = null, TextureData[]? textureData = null, uint[]? rawImage = null, int? explicitUUID = null)
+         {
+             Name = name;
+             FilePath = filePath ?? "";
+@@ -52,15 +58,10 @@ namespace Gears.Graphics
+                 if (!File.Exists(resolvedPath))
+                 {
+                     Logger.Instance.LogError($"Texture file not found: {resolvedPath}");
+-                    if (Game.MissingTexture != null && Game.MissingTexture != this)
+-                    {
+-                        Handle = Game.MissingTexture.Handle;
+-                        _nextUUID = Guid.NewGuid().GetHashCode();
+-                        UUID = _nextUUID;
+-                        return;
+-                    }
+-                    Handle = -1;
+-                    UUID = -1;
++                    Handle = CreateFallbackHandle(out Vector2i fallbackSize);
++                    Size = fallbackSize;
++                    _nextUUID = explicitUUID ?? Guid.NewGuid().GetHashCode();
++                    UUID = _nextUUID;
+                     return;
+                 }
+ 
+@@ -104,10 +105,42 @@ namespace Gears.Graphics
+             GL.GenerateMipmap((GenerateMipmapTarget)_target);
+ 
+             Size = new Vector2i(image.Width, image.Height);
+-            _nextUUID = Guid.NewGuid().GetHashCode();
++            _nextUUID = explicitUUID ?? Guid.NewGuid().GetHashCode();
+             UUID = _nextUUID;
+         }
+ 
++        // Builds a brand new GL texture from the fallback image, with its own
++        // handle. Used on a missing-file failure instead of reusing
++        // Game.MissingTexture.Handle directly — reusing that handle meant
++        // deleting a failed-load texture deleted the shared fallback for
++        // every other texture using it too.
++        private static int CreateFallbackHandle(out Vector2i size)
++        {
++            string fallbackPath = Path.Combine("..", "..", "..", "Fallback Assets", "Textures", "Missing.png");
++            if (!File.Exists(fallbackPath))
++            {
++                Logger.Instance.LogError($"CreateFallbackHandle: fallback texture not found at '{fallbackPath}'.");
++                size = Vector2i.Zero;
++                return -1;
++            }
++
++            using FileStream stream = File.OpenRead(fallbackPath);
++            ImageResult image = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
++
++            int handle = GL.GenTexture();
++            GL.BindTexture(TextureTarget.Texture2D, handle);
++            GL.PixelStore(PixelStoreParameter.UnpackAlignment, 1);
++            GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgba, image.Width, image.Height, 0, PixelFormat.Rgba, PixelType.UnsignedByte, image.Data);
++            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)TextureWrapMode.Repeat);
++            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)TextureWrapMode.Repeat);
++            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Linear);
++            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Linear);
++            GL.GenerateMipmap(GenerateMipmapTarget.Texture2D);
++
++            size = new Vector2i(image.Width, image.Height);
++            return handle;
++        }
++
+         public Texture(string name, Vector2i size,
+             PixelInternalFormat internalFormat = PixelInternalFormat.Rgba,
+             PixelFormat format = PixelFormat.Rgba,
+@@ -159,7 +192,8 @@ namespace Gears.Graphics
+         public Texture(string name, string filePath, TextureWrapMode wrapS,
+             TextureWrapMode wrapT = TextureWrapMode.ClampToEdge,
+             TextureMinFilter minFilter = TextureMinFilter.LinearMipmapLinear,
+-            TextureMagFilter magFilter = TextureMagFilter.Linear)
++            TextureMagFilter magFilter = TextureMagFilter.Linear,
++            int? explicitUUID = null)
+         {
+             Name = name;
+             FilePath = "";
+@@ -181,15 +215,10 @@ namespace Gears.Graphics
+             if (!File.Exists(resolvedPath))
+             {
+                 Logger.Instance.LogError($"Texture file not found: {resolvedPath}");
+-                if (Game.MissingTexture != null && Game.MissingTexture != this)
+-                {
+-                    Handle = Game.MissingTexture.Handle;
+-                    _nextUUID = Guid.NewGuid().GetHashCode();
+-                    UUID = _nextUUID;
+-                    return;
+-                }
+-                Handle = -1;
+-                UUID = -1;
++                Handle = CreateFallbackHandle(out Vector2i fallbackSize);
++                Size = fallbackSize;
++                _nextUUID = explicitUUID ?? Guid.NewGuid().GetHashCode();
++                UUID = _nextUUID;
+                 return;
+             }
+ 
+@@ -210,7 +239,7 @@ namespace Gears.Graphics
+             GL.GenerateMipmap(GenerateMipmapTarget.Texture2D);
+ 
+             Size = new Vector2i(image.Width, image.Height);
+-            _nextUUID = Guid.NewGuid().GetHashCode();
++            _nextUUID = explicitUUID ?? Guid.NewGuid().GetHashCode();
+             UUID = _nextUUID;
+         }
+ 
+diff --git a/Input/Input.cs b/Input/Input.cs
+index 91c4b47..3c0c7dd 100644
+--- a/Input/Input.cs
++++ b/Input/Input.cs
+@@ -48,22 +48,23 @@ public static class Input
+ 
+     public static bool GetKeyDown(KeyCode key)
+     {
+-        return _currentKeyboard.IsKeyDown(MapKeyCode(key));
++        return _hasValidKeyboard && _currentKeyboard.IsKeyDown(MapKeyCode(key));
+     }
+ 
++    // "Up" means "released this frame" (an edge), not "currently not held".
+     public static bool GetKeyUp(KeyCode key)
+     {
+-        return !_currentKeyboard.IsKeyDown(MapKeyCode(key));
++        return _hasValidKeyboard && _currentKeyboard.IsKeyReleased(MapKeyCode(key));
+     }
+ 
+     public static bool GetKeyPressed(KeyCode key)
+     {
+-        return _currentKeyboard.IsKeyPressed(MapKeyCode(key));
++        return _hasValidKeyboard && _currentKeyboard.IsKeyPressed(MapKeyCode(key));
+     }
+ 
+     public static bool GetKeyReleased(KeyCode key)
+     {
+-        return _currentKeyboard.IsKeyReleased(MapKeyCode(key));
++        return _hasValidKeyboard && _currentKeyboard.IsKeyReleased(MapKeyCode(key));
+     }
+ 
+     private static bool GetKeyState(KeyCode key, KeyboardState state)
+@@ -93,7 +94,7 @@ public static class Input
+ 
+     public static bool GetMouseButtonUp(MouseButtons button)
+     {
+-        return _hasValidMouse && !_currentMouse.IsButtonDown(MapMouseButton(button));
++        return _hasValidMouse && _currentMouse.IsButtonReleased(MapMouseButton(button));
+     }
+ 
+     public static bool GetMouseButtonReleased(MouseButtons button)
+diff --git a/Utilities/OBJParser.cs b/Utilities/OBJParser.cs
+index a80c92e..1593272 100644
+--- a/Utilities/OBJParser.cs
++++ b/Utilities/OBJParser.cs
+@@ -11,7 +11,7 @@ namespace Gears.Utilities
+     {
+         private static readonly char[] Separators = { ' ', '\t' };
+ 
+-        public static Mesh Parse(string name, string path)
++        public static Mesh Parse(string name, string path, int? explicitUUID = null)
+         {
+             List<Vector3> positions = new();
+             List<Vector2> uvs = new();
+@@ -97,7 +97,7 @@ namespace Gears.Utilities
+             if (!HasNormals(subMeshes))
+                 GenerateFlatNormals(subMeshes);
+ 
+-            return new Mesh(name, subMeshes);
++            return new Mesh(name, subMeshes, explicitUUID);
+         }
+ 
+         private static SubMesh NewSubMesh(int materialUUID)
+diff --git a/World/Components/Light.cs b/World/Components/Light.cs
+index fdebcf7..a42fe7b 100644
+--- a/World/Components/Light.cs
++++ b/World/Components/Light.cs
+@@ -1,4 +1,5 @@
+-﻿using Gears.Graphics;
++﻿using Gears;
++using Gears.Graphics;
+ using OpenTK.Mathematics;
+ 
+ namespace Gears.World.Components
+@@ -33,7 +34,18 @@ namespace Gears.World.Components
+         public float range = 10f;
+ 
+         /// <summary>UUID of the cookie texture. -1 means no cookie.</summary>
+-        public int cookieTextureUUID = -1;
++        private int _cookieTextureUUID = -1;
++        public int cookieTextureUUID
++        {
++            get => _cookieTextureUUID;
++            set
++            {
++                if (_cookieTextureUUID == value) return;
++                FindLoadedAssets.FindTexture(null, _cookieTextureUUID)?.Release();
++                _cookieTextureUUID = value;
++                FindLoadedAssets.FindTexture(null, _cookieTextureUUID)?.Retain();
++            }
++        }
+         public Vector2 cookieScale = Vector2.One;
+         public Vector2 cookieOffset = Vector2.Zero;
+ 
+@@ -80,6 +92,7 @@ namespace Gears.World.Components
+         {
+             base.OnDestroy();
+             LightManager.Unregister(this);
++            cookieTextureUUID = -1;
+         }
+ 
+         public static Vector4 TemperatureToColor(float kelvin)
+diff --git a/World/Components/MeshFilter.cs b/World/Components/MeshFilter.cs
+index 0abea12..24da4c8 100644
+--- a/World/Components/MeshFilter.cs
++++ b/World/Components/MeshFilter.cs
+@@ -5,7 +5,18 @@ namespace Gears.World.Components
+ {
+     public class MeshFilter : BaseComponent
+     {
+-        public Mesh? Mesh { get; set; }
++        private Mesh? _mesh;
++        public Mesh? Mesh
++        {
++            get => _mesh;
++            set
++            {
++                if (_mesh == value) return;
++                _mesh?.Release();
++                _mesh = value;
++                _mesh?.Retain();
++            }
++        }
+ 
+         public MeshFilter()
+         {
+@@ -22,4 +33,4 @@ namespace Gears.World.Components
+             Mesh = null;
+         }
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/World/Components/MeshRenderer.cs b/World/Components/MeshRenderer.cs
+index e09dd82..591d8f8 100644
+--- a/World/Components/MeshRenderer.cs
++++ b/World/Components/MeshRenderer.cs
+@@ -9,8 +9,19 @@ namespace Gears.World.Components
+         /// <summary>Render sort order (opaque pass layer ordering, not the semantic GameObject Layer).</summary>
+         public int SortLayer { get; set; } = 0;
+ 
++        private Material? _material;
+         /// <summary>Optional material override. If null, uses the SubMesh's material.</summary>
+-        public Material? Material { get; set; }
++        public Material? Material
++        {
++            get => _material;
++            set
++            {
++                if (_material == value) return;
++                _material?.Release();
++                _material = value;
++                _material?.Retain();
++            }
++        }
+ 
+         private MeshFilter? _meshFilter;
+ 
+@@ -44,6 +55,7 @@ namespace Gears.World.Components
+         {
+             base.OnDestroy();
+             _meshFilter = null;
++            Material = null;
+         }
+     }
+ }
+\ No newline at end of file
+diff --git a/World/GameObject.cs b/World/GameObject.cs
+index e98a3a4..eb75bb8 100644
+--- a/World/GameObject.cs
++++ b/World/GameObject.cs
+@@ -199,6 +199,22 @@ public class GameObject
+         return component;
+     }
+ 
++    // For a component that was constructed and configured elsewhere (e.g. by
++    // the scene loader). Skips the "new T()" default-construction that
++    // AddComponent<T>() does, so field values set before this call are what
++    // Awake()/Start() see, not defaults overwritten afterward.
++    public BaseComponent AddComponent(BaseComponent component)
++    {
++        component.GameObject = this;
++        _components.Add(component);
++        component.Awake();
++
++        if (IsActive && component.enabled)
++            component.OnEnable();
++
++        return component;
++    }
++
+     public T? GetComponent<T>() where T : BaseComponent
+     {
+         foreach (var c in _components)
+diff --git a/World/Scene.cs b/World/Scene.cs
+index fa664a1..1648b2a 100644
+--- a/World/Scene.cs
++++ b/World/Scene.cs
+@@ -33,7 +33,6 @@ namespace Gears.World
+ 
+         public void SetMainCamera(Camera camera) => MainCamera = camera;
+ 
+-        public static Texture? SkyBox;
+ 
+         public Scene(string name = "Scene")
+         {
+@@ -57,7 +56,6 @@ namespace Gears.World
+             _rootObjects.Clear();
+             _pendingAdd.Clear();
+             _pendingRemove.Clear();
+-            SkyBox?.Delete();
+         }
+ 
+         public void Tick(double deltaTime)
+diff --git a/World/SceneManager.cs b/World/SceneManager.cs
+index b8a1b04..fbe5943 100644
+--- a/World/SceneManager.cs
++++ b/World/SceneManager.cs
+@@ -1,11 +1,29 @@
+ ﻿using System;
+ using System.Collections.Generic;
++using Gears.Graphics;
+ 
+ namespace Gears.World
+ {
+     public static class SceneManager
+     {
+         private static readonly Dictionary<string, Func<Scene>> _registry = new();
++
++        // Engine-wide, shared across every loaded scene - not owned by any
++        // single Scene. Retained/released like any other Texture reference;
++        // actually deleted at application shutdown (see Game.OnUnload), not
++        // when an individual scene unloads.
++        private static Texture? _skyBox;
++        public static Texture? SkyBox
++        {
++            get => _skyBox;
++            set
++            {
++                if (_skyBox == value) return;
++                _skyBox?.Release();
++                _skyBox = value;
++                _skyBox?.Retain();
++            }
++        }
+         private static readonly List<Scene> _loaded = new();
+ 
+         public static Scene? ActiveScene { get; private set; }
+diff --git a/World/SceneSerializer.cs b/World/SceneSerializer.cs
+new file mode 100644
+index 0000000..4701ab1
+--- /dev/null
++++ b/World/SceneSerializer.cs
+@@ -0,0 +1,295 @@
++using System;
++using System.Collections.Generic;
++using System.Linq;
++using System.Reflection;
++using System.Text.Json;
++using System.Text.Json.Nodes;
++using OpenTK.Mathematics;
++using Gears.Graphics;
++using Gears.World.Components;
++using Gears.Utilities;
++
++namespace Gears.World
++{
++    public static class SceneSerializer
++    {
++        // Public so other systems (e.g. the asset bundle loader) can match a
++        // "Component" meta entry's Name to a real type without re-scanning
++        // assemblies themselves.
++        private static Dictionary<string, Type>? _componentTypes;
++
++        public static Dictionary<string, Type> ComponentTypes
++        {
++            get
++            {
++                if (_componentTypes != null) return _componentTypes;
++
++                _componentTypes = new Dictionary<string, Type>();
++
++                foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
++                {
++                    Type[] types;
++                    try { types = asm.GetTypes(); }
++                    catch (ReflectionTypeLoadException e) { types = e.Types.Where(t => t != null).ToArray()!; }
++
++                    foreach (var t in types)
++                    {
++                        if (t.IsAbstract || t == typeof(Transform) || !typeof(BaseComponent).IsAssignableFrom(t)) continue;
++                        _componentTypes[t.Name] = t;
++                    }
++                }
++
++                return _componentTypes;
++            }
++        }
++
++        // -----------------------------------------------------------------
++        // Load (parser)
++        // -----------------------------------------------------------------
++
++        public static Scene Load(string json, string sceneName = "Scene")
++        {
++            var root = JsonNode.Parse(json)!.AsObject();
++            string name = root["Name"]?.GetValue<string>() ?? sceneName;
++            var scene = new Scene(name);
++
++            if (root["Root"] is JsonObject rootNodes)
++            {
++                foreach (var kvp in rootNodes)
++                {
++                    var go = BuildGameObject(kvp.Key, kvp.Value!.AsObject());
++                    scene.MakeGameObject(go);
++                }
++            }
++
++            return scene;
++        }
++
++        private static GameObject BuildGameObject(string name, JsonObject node)
++        {
++            var go = new GameObject(name);
++
++            go.Transform.LocalPosition = ReadVector3(node["Position"]);
++            go.Transform.LocalEulerAngles = ReadVector3(node["Rotation"]);
++            go.Transform.LocalScale = ReadVector3(node["Scale"], Vector3.One);
++
++            if (node["Components"] is JsonObject components)
++            {
++                foreach (var comp in components)
++                    BuildComponent(go, comp.Key, comp.Value as JsonObject);
++            }
++
++            if (node["Children"] is JsonObject children)
++            {
++                foreach (var child in children)
++                {
++                    var childGo = BuildGameObject(child.Key, child.Value!.AsObject());
++                    childGo.SetParent(go);
++                }
++            }
++
++            return go;
++        }
++
++        private static void BuildComponent(GameObject go, string typeName, JsonObject? fields)
++        {
++            if (!ComponentTypes.TryGetValue(typeName, out var type))
++            {
++                Logger.Instance.LogWarning($"Scene load: unknown component type '{typeName}' on '{go.Name}', skipped.");
++                return;
++            }
++
++            var component = (BaseComponent)Activator.CreateInstance(type)!;
++
++            // Fields are set before the component is attached, so Awake()/Start()
++            // (fired inside GameObject.AddComponent) see real values, not defaults.
++            if (fields != null)
++            {
++                foreach (var field in fields)
++                    SetMember(component, type, field.Key, field.Value);
++            }
++
++            go.AddComponent(component);
++        }
++
++        private static void SetMember(BaseComponent component, Type type, string memberName, JsonNode? valueNode)
++        {
++            if (valueNode == null) return;
++
++            var prop = type.GetProperty(memberName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
++            if (prop != null && prop.CanWrite)
++            {
++                prop.SetValue(component, ConvertValue(valueNode, prop.PropertyType));
++                return;
++            }
++
++            var field = type.GetField(memberName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
++            if (field != null)
++            {
++                field.SetValue(component, ConvertValue(valueNode, field.FieldType));
++                return;
++            }
++
++            Logger.Instance.LogWarning($"Scene load: '{type.Name}' has no writable member '{memberName}', skipped.");
++        }
++
++        private static object? ConvertValue(JsonNode node, Type targetType)
++        {
++            if (targetType == typeof(string)) return node.GetValue<string>();
++            if (targetType == typeof(bool)) return node.GetValue<bool>();
++            if (targetType == typeof(int)) return ReadInt(node);
++            if (targetType == typeof(float)) return ReadFloat(node);
++            if (targetType == typeof(double)) return (double)ReadFloat(node);
++            if (targetType.IsEnum) return Enum.ToObject(targetType, ReadInt(node));
++
++            if (targetType == typeof(Vector2) && node is JsonObject v2)
++                return new Vector2(ReadFloat(v2["X"]), ReadFloat(v2["Y"]));
++
++            if (targetType == typeof(Vector3) && node is JsonObject v3)
++                return new Vector3(ReadFloat(v3["X"]), ReadFloat(v3["Y"]), ReadFloat(v3["Z"]));
++
++            if (targetType == typeof(Vector2i) && node is JsonObject v2i)
++                return new Vector2i(ReadInt(v2i["X"]), ReadInt(v2i["Y"]));
++
++            if (targetType == typeof(Color4) && node is JsonObject col)
++                return new Color4(ReadFloat(col["R"]), ReadFloat(col["G"]), ReadFloat(col["B"]), ReadFloat(col["A"]));
++
++            if (targetType == typeof(Mesh)) return FindLoadedAssets.FindMesh(node.GetValue<string>());
++            if (targetType == typeof(Texture)) return FindLoadedAssets.FindTexture(node.GetValue<string>());
++            if (targetType == typeof(Material)) return FindLoadedAssets.FindMaterial(node.GetValue<string>());
++
++            Logger.Instance.LogWarning($"Scene load: no converter for type '{targetType.Name}', skipped.");
++            return null;
++        }
++
++        private static Vector3 ReadVector3(JsonNode? node, Vector3 fallback = default)
++        {
++            if (node is not JsonArray arr || arr.Count < 3) return fallback;
++            return new Vector3(ReadFloat(arr[0]), ReadFloat(arr[1]), ReadFloat(arr[2]));
++        }
++
++        private static float ReadFloat(JsonNode? node)
++        {
++            if (node is not JsonValue val) return 0f;
++            if (val.TryGetValue<float>(out var f)) return f;
++            if (val.TryGetValue<string>(out var s) && float.TryParse(s, out var parsed)) return parsed;
++            return 0f;
++        }
++
++        private static int ReadInt(JsonNode? node)
++        {
++            if (node is not JsonValue val) return 0;
++            if (val.TryGetValue<int>(out var i)) return i;
++            if (val.TryGetValue<string>(out var s) && int.TryParse(s, out var parsed)) return parsed;
++            return 0;
++        }
++
++        // -----------------------------------------------------------------
++        // Save (constructor)
++        // -----------------------------------------------------------------
++
++        private static readonly JsonSerializerOptions WriteOptions = new() { WriteIndented = true };
++
++        public static string Save(Scene scene)
++        {
++            var rootNodes = new JsonObject();
++            foreach (var go in scene.RootObjects)
++                rootNodes[go.Name] = WriteGameObject(go);
++
++            var root = new JsonObject
++            {
++                ["Name"] = scene.Name,
++                ["Root"] = rootNodes
++            };
++
++            return root.ToJsonString(WriteOptions);
++        }
++
++        private static JsonObject WriteGameObject(GameObject go)
++        {
++            return new JsonObject
++            {
++                ["Position"] = WriteVector3(go.Transform.LocalPosition),
++                ["Rotation"] = WriteVector3(QuaternionToEulerDegrees(go.Transform.LocalRotation)),
++                ["Scale"] = WriteVector3(go.Transform.LocalScale),
++                ["Components"] = WriteComponents(go),
++                ["Children"] = WriteChildren(go)
++            };
++        }
++
++        private static JsonArray WriteVector3(Vector3 v) => new JsonArray(v.X, v.Y, v.Z);
++
++        private static Vector3 QuaternionToEulerDegrees(Quaternion q)
++        {
++            Vector3 rad = q.ToEulerAngles();
++            return new Vector3(
++                MathHelper.RadiansToDegrees(rad.X),
++                MathHelper.RadiansToDegrees(rad.Y),
++                MathHelper.RadiansToDegrees(rad.Z));
++        }
++
++        private static JsonObject WriteComponents(GameObject go)
++        {
++            var components = new JsonObject();
++
++            foreach (var component in go.GetComponents<BaseComponent>())
++            {
++                if (component is Transform) continue;
++                components[component.GetType().Name] = WriteComponent(component);
++            }
++
++            return components;
++        }
++
++        private static JsonObject WriteComponent(BaseComponent component)
++        {
++            var type = component.GetType();
++            var obj = new JsonObject();
++
++            foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
++            {
++                if (!prop.CanRead || !prop.CanWrite) continue;
++                obj[prop.Name] = WriteValue(prop.GetValue(component), prop.PropertyType);
++            }
++
++            foreach (var field in type.GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
++            {
++                obj[field.Name] = WriteValue(field.GetValue(component), field.FieldType);
++            }
++
++            return obj;
++        }
++
++        private static JsonNode? WriteValue(object? value, Type type)
++        {
++            if (value == null) return null;
++
++            if (type == typeof(string)) return JsonValue.Create((string)value);
++            if (type == typeof(bool)) return JsonValue.Create((bool)value);
++            if (type == typeof(int)) return JsonValue.Create((int)value);
++            if (type == typeof(float)) return JsonValue.Create((float)value);
++            if (type == typeof(double)) return JsonValue.Create((double)value);
++            if (type.IsEnum) return JsonValue.Create((int)value);
++
++            if (type == typeof(Vector2)) { var v = (Vector2)value; return new JsonObject { ["X"] = v.X, ["Y"] = v.Y }; }
++            if (type == typeof(Vector3)) { var v = (Vector3)value; return new JsonObject { ["X"] = v.X, ["Y"] = v.Y, ["Z"] = v.Z }; }
++            if (type == typeof(Vector2i)) { var v = (Vector2i)value; return new JsonObject { ["X"] = v.X, ["Y"] = v.Y }; }
++            if (type == typeof(Color4)) { var c = (Color4)value; return new JsonObject { ["R"] = c.R, ["G"] = c.G, ["B"] = c.B, ["A"] = c.A }; }
++
++            if (type == typeof(Mesh)) return ((Mesh)value).Name;
++            if (type == typeof(Texture)) return ((Texture)value).Name;
++            if (type == typeof(Material)) return ((Material)value).Name;
++
++            Logger.Instance.LogWarning($"Scene save: no writer for type '{type.Name}', field dropped.");
++            return null;
++        }
++
++        private static JsonObject WriteChildren(GameObject go)
++        {
++            var children = new JsonObject();
++            foreach (var child in go.Children)
++                children[child.Name] = WriteGameObject(child);
++            return children;
++        }
++    }
++}

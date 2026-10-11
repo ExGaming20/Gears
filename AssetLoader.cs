@@ -9,15 +9,25 @@ namespace Gears
 {
     public class AssetLoader
     {
-        public static void LoadShader(string name, string path)
+        // rawShaders: when set (bundle loads), maps a raw shader asset name to the file it was loaded
+        // from. A sub-shader name like "BaseVertex" is looked up there first, so a bundle can ship its
+        // own raw shaders in any folder. A name that is not in the map is left alone and the engine's
+        // normal lookup (its own Raw Shaders folder) applies.
+        public static void LoadShader(string name, string path, int? explicitUUID = null, IReadOnlyDictionary<string, string>? rawShaders = null)
         {
+            string? InBundle(string? subName)
+            {
+                if (string.IsNullOrEmpty(subName) || rawShaders == null) return subName;
+                return rawShaders.TryGetValue(subName, out string? full) ? full : subName;
+            }
+
             if (!Path.IsPathFullyQualified(path))
                 path = Path.Combine("..", "..", "..", "Assets", "Shaders", path + ".nlsf");
 
             if (!File.Exists(path))
             {
                 Logger.Instance.LogError($"Shader file not found: {path}");
-                Game.Shaders.Add(Game.MissingShader);
+                ReturnShaderMissing(name, "Missing"); // self-adds
 
                 return;
             }
@@ -38,14 +48,15 @@ namespace Gears
                 {
                     foreach (JsonElement sub in subShaders.EnumerateArray())
                     {
-                        if (sub.TryGetProperty("Vertex", out JsonElement v)) vertexPath = v.GetString();
-                        if (sub.TryGetProperty("Fragment", out JsonElement f)) fragmentPath = f.GetString();
-                        if (sub.TryGetProperty("Geometry", out JsonElement g)) geometryPath = g.GetString();
+                        if (sub.TryGetProperty("Vertex", out JsonElement v)) vertexPath = InBundle(v.GetString());
+                        if (sub.TryGetProperty("Fragment", out JsonElement f)) fragmentPath = InBundle(f.GetString());
+                        if (sub.TryGetProperty("Geometry", out JsonElement g)) geometryPath = InBundle(g.GetString());
                     }
                 }
 
-                Shader shader = new Shader(new ShaderProgram(vertexPath, fragmentPath, geometryPath, null, true), name);
+                Shader shader = new Shader(new ShaderProgram(vertexPath, fragmentPath, geometryPath, null, true), name, explicitUUID);
                 Game.Shaders.Add(shader);
+                Game.ShaderByUUID[shader.UUID] = shader;
             }
             else
             {
@@ -55,17 +66,18 @@ namespace Gears
                 {
                     foreach (JsonElement sub in subShaders.EnumerateArray())
                     {
-                        if (sub.TryGetProperty("Compute", out JsonElement c)) computePath = c.GetString();
+                        if (sub.TryGetProperty("Compute", out JsonElement c)) computePath = InBundle(c.GetString());
                     }
                 }
 
-                Shader shader = new Shader(new ShaderProgram(null, null, null, computePath), name);
+                Shader shader = new Shader(new ShaderProgram(null, null, null, computePath), name, explicitUUID);
                 shader.ReloadShader();
                 Game.Shaders.Add(shader);
+                Game.ShaderByUUID[shader.UUID] = shader;
             }
         }
 
-        public static void LoadTexture(string name, string path)
+        public static void LoadTexture(string name, string path, int? explicitUUID = null)
         {
             if (!Path.IsPathFullyQualified(path))
                 path = Path.GetFullPath(Path.Combine("..", "..", "..", "Assets", "Textures", Path.GetFileName(path)));
@@ -78,12 +90,13 @@ namespace Gears
                 new TextureData { Type = TextureDataType.PixelFormat,     Value = TextureDataValue.Rgba               },
                 new TextureData { Type = TextureDataType.TextureTarget,   Value = TextureDataValue.Texture2D          },
                 new TextureData { Type = TextureDataType.ColorComponents, Value = TextureDataValue.Rgba               }
-            });
+            }, explicitUUID: explicitUUID);
 
             Game.Textures.Add(texture);
+            Game.TextureByUUID[texture.UUID] = texture;
         }
 
-        public static void LoadMaterial(string name, string path)
+        public static void LoadMaterial(string name, string path, int? explicitUUID = null)
         {
             if (!Path.IsPathFullyQualified(path))
                 path = Path.Combine("..", "..", "..", "Assets", "Materials", path + ".nlmf");
@@ -91,7 +104,7 @@ namespace Gears
             if (!File.Exists(path))
             {
                 Logger.Instance.LogError($"Material file not found: {path}");
-                Game.Materials.Add(Game.MissingMaterial);
+                ReturnMaterialMissing(name, "Missing"); // self-adds
 
                 return;
             }
@@ -140,11 +153,13 @@ namespace Gears
                     if (texture != null)
                     {
                         TextureData[] extractedData = ExtractTextureData(tex);
-                        texture = new Texture(texture.Name, texture.FilePath, extractedData);
+                        // Per-material variant with its own wrap/filter settings, added as its own
+                        // entry. Swapping it into the shared slot orphaned the original (GL handle
+                        // never deleted) and repeated that leak on every later material load.
+                        texture = new Texture($"{texture.Name}__{name}", texture.FilePath, extractedData);
 
-                        int index = Game.Textures.FindIndex(t => t.Name == textureName);
-                        if (index >= 0)
-                            Game.Textures[index] = texture;
+                        Game.Textures.Add(texture);
+                        Game.TextureByUUID[texture.UUID] = texture;
                     }
 
                     textures.Add(new Material._TextureData
@@ -158,7 +173,7 @@ namespace Gears
                 }
             }
 
-            Material material = new Material
+            Material material = new Material(explicitUUID)
             {
                 Name = name,
                 ShaderName = shaderName,
@@ -186,9 +201,10 @@ namespace Gears
             }
 
             Game.Materials.Add(material);
+            Game.MaterialByUUID[material.UUID] = material;
         }
 
-        public static void LoadMesh(string name, string path)
+        public static void LoadMesh(string name, string path, int? explicitUUID = null)
         {
             if (!Path.IsPathFullyQualified(path))
                 path = Path.Combine("..", "..", "..", "Assets", "Models", path + ".obj");
@@ -196,12 +212,12 @@ namespace Gears
             if (!File.Exists(path))
             {
                 Logger.Instance.LogError($"Mesh file not found: {path}");
-                Game.Meshes.Add(Game.MissingMesh);
+                Game.Meshes.Add(ReturnMeshMissing(name, "Missing")); // fresh mesh with its own SubMesh data
 
                 return;
             }
 
-            Mesh mesh = OBJParser.Parse(name, path);
+            Mesh mesh = OBJParser.Parse(name, path, explicitUUID);
             Game.Meshes.Add(mesh);
         }
 
@@ -308,6 +324,7 @@ namespace Gears
                 Shader shader = new Shader(new ShaderProgram(vertexPath, fragmentPath, geometryPath, null, true), name);
 
                 Game.Shaders.Add(shader);
+                Game.ShaderByUUID[shader.UUID] = shader;
 
                 return shader;
             }
@@ -407,6 +424,7 @@ namespace Gears
             }
 
             Game.Materials.Add(material);
+            Game.MaterialByUUID[material.UUID] = material;
 
             return material;
         }
@@ -424,6 +442,7 @@ namespace Gears
             });
 
             Game.Textures.Add(texture);
+            Game.TextureByUUID[texture.UUID] = texture;
 
             return texture;
         }

@@ -1,0 +1,6 @@
+{
+  "Type": "RawShader",
+  "Location": "/Raw Shaders/DepthPrepassVertex.shader",
+  "UUID": "54229fb4-021a-4665-bbe5-5f351ece074e",
+  "Name": "DepthPrepassVertex"
+}
