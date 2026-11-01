@@ -68,13 +68,16 @@ namespace Gears
 
         public static float DeltaTime { get; private set; }
 
-        public Game(int width, int height, string title) : base(GameWindowSettings.Default, new NativeWindowSettings() { Size = (width, height), Title = title, APIVersion = new Version(4, 3), Profile = ContextProfile.Core })
+        public Game(int width, int height, string title) : base(GameWindowSettings.Default, new NativeWindowSettings() { Size = (width, height), Title = title, APIVersion = new Version(4, 3), Profile = ContextProfile.Core, AutoLoadBindings = false })
         {
             Instance = this;
             Input.CurrentWindow = this;
 
             WindowTitle = title;
             OriginalTitle = title;
+
+            // OpenTK's automatic binding loader uses reflection, which NativeAOT trims away.
+            GL.LoadBindings(new GLFWBindingsContext());
         }
 
         protected override void OnLoad()
@@ -96,21 +99,22 @@ namespace Gears
             GL.Enable(EnableCap.Blend);
             GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
 
-            SceneManager.Register(MainSceneName, () => new Scene(MainSceneName));
-            SceneManager.LoadScene(MainSceneName);
-
-            Scene activeScene = SceneManager.ActiveScene!;
-
-            SceneManager.SkyBox = new Texture("SkyBox", "CubeMap.png", TextureWrapMode.Repeat, TextureWrapMode.ClampToEdge);
-
             MissingShader = AssetLoader.ReturnShaderMissing("Missing", "Missing");
             MissingTexture = AssetLoader.ReturnTextureMissing("MissingTexture", Path.Combine("Missing.png"));
-            MissingMaterial = AssetLoader.ReturnMaterialMissing("Missing", Path.Combine("Fallback Assets", "Materials", "Missing"));
+            MissingMaterial = AssetLoader.ReturnMaterialMissing("Missing", Path.Combine("Fallback Assets", "Default Fallback Assets", "Assets", "Materials", "Missing"));
             MissingMesh = AssetLoader.ReturnMeshMissing("Missing", "Missing");
 
             Bundles.Add(AssetBundleLoader.LoadAssetBundle("Default Assets"));
 
             //AssetLoader.LoadAllAssets();
+
+            SceneManager.Register(MainSceneName, () => new Scene(MainSceneName));
+            SceneManager.LoadScene(MainSceneName);
+
+            Scene activeScene = SceneManager.ActiveScene!;
+
+            SceneManager.SkyBox = Game.Textures.Find(t => t.Name == "CubeMap") 
+                ?? new Texture("SkyBox", "CubeMap.png", TextureWrapMode.Repeat, TextureWrapMode.ClampToEdge);
 
             foreach (var shader in Shaders) ShaderByUUID[shader.UUID] = shader;
             foreach (var texture in Textures) TextureByUUID[texture.UUID] = texture;
@@ -203,7 +207,7 @@ namespace Gears
             lightObj2.GetComponent<Transform>().EulerAngles = new Vector3(-60, 30, 0);
             lightObj2.GetComponent<Light>().intensity = 0.5f;
             lightObj2.GetComponent<Light>().color = new Color4(1f, 0f, 0f, 1f);
-            lightObj2.GetComponent<Light>().shadowResolution = Light.ShadowResolution.Medium;
+            lightObj2.GetComponent<Light>().shadowResolution = Light.ShadowResolution.High;
 
             var planeObj = new GameObject("plane");
             activeScene.MakeGameObject(planeObj);

@@ -1,0 +1,6 @@
+{
+  "Type": "RawShader",
+  "Location": "/Raw Shaders/MissingVertex.shader",
+  "UUID": "e25360f9-f25a-42a9-9562-379666c68c68",
+  "Name": "MissingVertex"
+}

@@ -92,6 +92,7 @@ namespace Gears.Graphics
                 (geometrySource != null && geometryShaderID == 0) ||
                 (computeSource != null && computeShaderID == 0))
             {
+                Logger.Instance.LogError($"Shader compilation failed - cannot create program. Vertex: {(vertexShaderID == 0 && vertexSource != null ? "FAILED" : "OK")}, Fragment: {(fragmentShaderID == 0 && fragmentSource != null ? "FAILED" : "OK")}, Geometry: {(geometryShaderID == 0 && geometrySource != null ? "FAILED" : "OK")}, Compute: {(computeShaderID == 0 && computeSource != null ? "FAILED" : "OK")}");
                 if (vertexShaderID != 0) GL.DeleteShader(vertexShaderID);
                 if (fragmentShaderID != 0) GL.DeleteShader(fragmentShaderID);
                 if (geometryShaderID != 0) GL.DeleteShader(geometryShaderID);
@@ -112,7 +113,7 @@ namespace Gears.Graphics
             if (linkStatus == 0)
             {
                 string log = GL.GetProgramInfoLog(program);
-                Logger.Instance.LogError($"Program linking failed: {log}");
+                Logger.Instance.LogError($"Program linking failed: {(string.IsNullOrEmpty(log) ? "Unknown reason - check shader compilation errors above" : log)}");
                 GL.DeleteProgram(program);
                 program = 0;
             }
@@ -168,17 +169,36 @@ namespace Gears.Graphics
             if (string.IsNullOrEmpty(originalPath))
                 return null;
 
+            // First, check global loaded raw shaders from bundles
+            if (Gears.AssetBundleLoader.LoadedRawShaders.TryGetValue(originalPath, out string? bundlePath))
+            {
+                if (File.Exists(bundlePath))
+                    return bundlePath;
+            }
+
             string path = originalPath;
 
             // If the path doesn't exist as given, try the standard asset folder
             if (!File.Exists(path))
-                path = Path.Combine("..", "..", "..", "Assets", "Raw Shaders", originalPath + ".shader");
+                path = AssetPaths.InAssets("Raw Shaders", originalPath + ".shader");
 
-            // If still missing and fallback is allowed, try the fallback folder
-            if (!File.Exists(path) && missingFallback.HasValue && missingFallback.Value)
-                path = Path.Combine("..", "..", "..", "Fallback Assets", "Raw Shaders", Path.GetFileName(originalPath) + ".shader");
+            // If still not found, try fallback (Default Fallback Assets)
+            if (!File.Exists(path) && missingFallback == true)
+            {
+                // Try the original shader name in fallback folder first
+                path = AssetPaths.InFallbackAssets("Default Fallback Assets", "Assets", "Raw Shaders", originalPath + ".shader");
+                if (!File.Exists(path))
+                    // Then try generic Missing.shader
+                    path = AssetPaths.InFallbackAssets("Default Fallback Assets", "Assets", "Raw Shaders", "Missing.shader");
+            }
 
-            return File.Exists(path) ? path : null;
+            if (!File.Exists(path))
+            {
+                Logger.Instance.LogWarning($"Shader not found: {originalPath} (tried: {path})");
+                return null;
+            }
+
+            return path;
         }
 
         private int CompileShader(ShaderType type, string source)

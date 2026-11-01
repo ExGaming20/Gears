@@ -22,7 +22,7 @@ namespace Gears
             }
 
             if (!Path.IsPathFullyQualified(path))
-                path = Path.Combine("..", "..", "..", "Assets", "Shaders", path + ".nlsf");
+                path = AssetPaths.InAssets("Shaders", path + ".nlsf");
 
             if (!File.Exists(path))
             {
@@ -80,7 +80,7 @@ namespace Gears
         public static void LoadTexture(string name, string path, int? explicitUUID = null)
         {
             if (!Path.IsPathFullyQualified(path))
-                path = Path.GetFullPath(Path.Combine("..", "..", "..", "Assets", "Textures", Path.GetFileName(path)));
+                path = AssetPaths.InAssets("Textures", Path.GetFileName(path));
 
             Texture texture = new Texture(name, path, new TextureData[]
             {
@@ -99,7 +99,7 @@ namespace Gears
         public static void LoadMaterial(string name, string path, int? explicitUUID = null)
         {
             if (!Path.IsPathFullyQualified(path))
-                path = Path.Combine("..", "..", "..", "Assets", "Materials", path + ".nlmf");
+                path = AssetPaths.InAssets("Materials", path + ".nlmf");
 
             if (!File.Exists(path))
             {
@@ -207,7 +207,7 @@ namespace Gears
         public static void LoadMesh(string name, string path, int? explicitUUID = null)
         {
             if (!Path.IsPathFullyQualified(path))
-                path = Path.Combine("..", "..", "..", "Assets", "Models", path + ".obj");
+                path = AssetPaths.InAssets("Models", path + ".obj");
 
             if (!File.Exists(path))
             {
@@ -223,7 +223,7 @@ namespace Gears
 
         public static void LoadAllAssets()
         {
-            LoadAll(Path.Combine("..", "..", "..", "Assets"));
+            LoadAll(AssetPaths.Assets);
         }
 
         private static void LoadAll(string basePath)
@@ -294,10 +294,7 @@ namespace Gears
         public static Shader ReturnShaderMissing(string name, string path)
         {
             if (!Path.IsPathFullyQualified(path))
-            {
-                string baseDir = AppContext.BaseDirectory;
-                path = Path.Combine(baseDir, "Fallback Assets", "Shaders", path + ".nlsf");
-            }
+                path = AssetPaths.InFallbackAssets("Default Fallback Assets", "Assets", "Shaders", path + ".nlsf");
 
             string json = File.ReadAllText(path);
 
@@ -335,10 +332,7 @@ namespace Gears
         public static Material ReturnMaterialMissing(string name, string path)
         {
             if (!Path.IsPathFullyQualified(path))
-            {
-                string baseDir = AppContext.BaseDirectory;
-                path = Path.Combine(baseDir, path + ".nlmf");
-            }
+                path = Path.Combine(AssetPaths.Root, path + ".nlmf");
 
             string json = File.ReadAllText(path);
 
@@ -450,10 +444,7 @@ namespace Gears
         public static Mesh ReturnMeshMissing(string name, string path)
         {
             if (!Path.IsPathFullyQualified(path))
-            {
-                string baseDir = AppContext.BaseDirectory;
-                path = Path.Combine(baseDir, "Fallback Assets", "Models", path + ".obj");
-            }
+                path = AssetPaths.InFallbackAssets("Default Fallback Assets", "Assets", "Models", path + ".obj");
 
             Mesh mesh = OBJParser.Parse(name, path);
 

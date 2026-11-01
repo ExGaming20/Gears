@@ -51,9 +51,32 @@ namespace Gears.Graphics
             {
                 string resolvedPath = filePath;
                 if (!Path.IsPathFullyQualified(filePath))
-                    resolvedPath = Path.Combine("..", "..", "..", "Fallback Assets", "Textures", "Missing.png");
+                {
+                    // First try to find in loaded bundle textures
+                    var existingTexture = Gears.Game.Textures.Find(t => t.Name == Path.GetFileNameWithoutExtension(filePath));
+                    if (existingTexture != null && File.Exists(existingTexture.FilePath))
+                    {
+                        resolvedPath = existingTexture.FilePath;
+                    }
+                    else
+                    {
+                        // Try Assets/Textures first, then Default Fallback Assets
+                        string assetsPath = AssetPaths.InAssets("Textures", Path.GetFileName(filePath));
+                        string defaultAssetsPath = AssetPaths.InAssets("Default Assets", "Assets", "Textures", Path.GetFileName(filePath));
+                        string fallbackPath = AssetPaths.InFallbackAssets("Default Fallback Assets", "Assets", "Textures", "Missing.png");
+                        
+                        if (File.Exists(assetsPath))
+                            resolvedPath = assetsPath;
+                        else if (File.Exists(defaultAssetsPath))
+                            resolvedPath = defaultAssetsPath;
+                        else
+                            resolvedPath = fallbackPath;
+                    }
+                }
                 else
+                {
                     resolvedPath = filePath;
+                }
 
                 if (!File.Exists(resolvedPath))
                 {
@@ -116,7 +139,7 @@ namespace Gears.Graphics
         // every other texture using it too.
         private static int CreateFallbackHandle(out Vector2i size)
         {
-            string fallbackPath = Path.Combine("..", "..", "..", "Fallback Assets", "Textures", "Missing.png");
+            string fallbackPath = AssetPaths.InFallbackAssets("Default Fallback Assets", "Assets", "Textures", "Missing.png");
             if (!File.Exists(fallbackPath))
             {
                 Logger.Instance.LogError($"CreateFallbackHandle: fallback texture not found at '{fallbackPath}'.");
@@ -210,7 +233,15 @@ namespace Gears.Graphics
 
             string resolvedPath = Path.IsPathFullyQualified(filePath)
                 ? filePath
-                : Path.Combine("..", "..", "..", "Assets", "Textures", filePath);
+                : AssetPaths.InAssets("Textures", filePath);
+
+            // If not found in Assets, try Default Assets bundle
+            if (!File.Exists(resolvedPath))
+            {
+                string defaultAssetsPath = AssetPaths.InAssets("Default Assets", "Assets", "Textures", filePath);
+                if (File.Exists(defaultAssetsPath))
+                    resolvedPath = defaultAssetsPath;
+            }
 
             if (!File.Exists(resolvedPath))
             {
@@ -327,7 +358,7 @@ namespace Gears.Graphics
 
             string resolvedPath = Path.IsPathFullyQualified(filePath)
                 ? filePath
-                : Path.Combine("..", "..", "..", "Assets", "Textures", filePath);
+                : AssetPaths.InAssets("Textures", filePath);
 
             if (!File.Exists(resolvedPath))
             {
@@ -382,7 +413,7 @@ namespace Gears.Graphics
             if (filePath == null)
             {
                 Logger.Instance.LogWarning("SetImageFromFilePath called with a null filePath.");
-                filePath = Path.Combine("..", "..", "..", "Fallback Assets", "Textures", "Missing.png");
+                filePath = AssetPaths.InFallbackAssets("Default Fallback Assets", "Assets", "Textures", "Missing.png");
             }
 
             if (filePath.Length == 0)
@@ -400,7 +431,7 @@ namespace Gears.Graphics
                 return;
             }
 
-            filePath = Path.Combine("..", "..", "..", "Assets", "Textures", filePath);
+            filePath = AssetPaths.InAssets("Textures", filePath);
 
             if (!File.Exists(filePath))
             {

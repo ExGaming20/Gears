@@ -1,23 +1,39 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-	<Nullable>enable</Nullable>
-  </PropertyGroup>
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<TargetFramework>net8.0-windows</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
 
-<ItemGroup>
-    <PackageReference Include="OpenTK" Version="4.9.4" />
-    <PackageReference Include="StbImageSharp" Version="2.30.15" />
-  </ItemGroup>
+		<PublishAot>true</PublishAot>
+		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
+		<SelfContained>true</SelfContained>
+	</PropertyGroup>
 
-  <ItemGroup>
-    <Content Include="Fallback Assets\**\*">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="Assets\**\*">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="OpenTK" Version="4.9.4" />
+		<PackageReference Include="StbImageSharp" Version="2.30.15" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Update="Assets\**\*">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+		</None>
+
+		<None Update="Fallback Assets\**\*">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+		</None>
+	</ItemGroup>
+
+	<Target Name="MoveNativeLibrariesToBinFolder" AfterTargets="Publish" Condition="'$(PublishAot)' == 'true'">
+		<ItemGroup>
+			<_NativeLibraryToMove Include="$(PublishDir)*.dll" />
+		</ItemGroup>
+		<MakeDir Directories="$(PublishDir)bin" />
+		<Move SourceFiles="@(_NativeLibraryToMove)" DestinationFolder="$(PublishDir)bin" />
+	</Target>
+
 </Project>

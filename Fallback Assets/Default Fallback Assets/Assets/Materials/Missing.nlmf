@@ -1,0 +1,42 @@
+{
+  "Name": "Missing",
+  "ShaderName": "Missing",
+  "SeeThroughType": "Opaque",
+  "BaseColor": {
+    "X": 1,
+    "Y": 1,
+    "Z": 1,
+    "W": 1
+  },
+  "EmissionColor": {
+    "X": 0,
+    "Y": 0,
+    "Z": 0,
+    "W": 0
+  },
+  "CullMode": "Neither",
+  "Metallic": 1,
+  "Roughness": 1,
+  "ReceiveShadows": false,
+  "CastShadows": true,
+  "ZWrite": true,
+  "Textures": [
+    {
+      "TextureName": "Missing",
+      "SemanticName": "albedo",
+      "TextureScale": {
+        "X": 1,
+        "Y": 1
+      },
+      "TextureOffset": {
+        "X": 0,
+        "Y": 0
+      },
+      "TextureWrap": "Repeat",
+      "TextureFilter": "Nearest",
+      "Mipmap": "NearestMipmapNearest",
+      "PixelFormat": "Rgb",
+      "TextureTarget": "Texture2D"
+    }
+  ]
+}

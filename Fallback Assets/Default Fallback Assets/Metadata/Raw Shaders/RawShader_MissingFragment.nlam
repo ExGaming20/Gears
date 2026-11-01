@@ -1,0 +1,6 @@
+{
+  "Type": "RawShader",
+  "Location": "/Raw Shaders/MissingFragment.shader",
+  "UUID": "c1b41b72-40a3-4703-ae1e-44dffe1f972c",
+  "Name": "MissingFragment"
+}

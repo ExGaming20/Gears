@@ -10,6 +10,13 @@ using Gears.Utilities;
 
 namespace Gears
 {
+    [JsonSourceGenerationOptions(PropertyNameCaseInsensitive = true)]
+    [JsonSerializable(typeof(AssetBundleLoader.BundleMeta))]
+    [JsonSerializable(typeof(AssetBundleLoader.AssetMeta))]
+    internal partial class AssetBundleJsonContext : JsonSerializerContext
+    {
+    }
+
     // A loaded asset bundle. Holds the bundle's own identity and the UUIDs
     // of everything it loaded. The loaded objects themselves live in the
     // same Game.Textures/Meshes/Materials/Shaders lists as every other asset.
@@ -31,28 +38,32 @@ namespace Gears
 
     public static class AssetBundleLoader
     {
-        // Where a bare bundle name (not a path) is looked up.
-        public static string BundlesRoot = Path.Combine("..", "..", "..", "Assets");
+        public static string BundlesRoot = AssetPaths.Assets;
 
-        private static readonly JsonSerializerOptions ReadOptions = new() { PropertyNameCaseInsensitive = true };
+        public static readonly Dictionary<string, string> LoadedRawShaders = new();
 
-        private sealed class BundleMeta
+        internal sealed class BundleMeta
         {
             public string? Name { get; set; }
 
             [JsonPropertyName("Asset")]
-            public List<string>? Asset { get; set; }
+            public List<string>? Asset { get; set; } = new();
 
             public string? UUID { get; set; }
         }
 
-        private sealed class AssetMeta
+        internal sealed class AssetMeta
         {
             public string? Type { get; set; }
             public string? Location { get; set; }
             public string? UUID { get; set; }
             public string? Name { get; set; }
         }
+
+        private static readonly JsonSerializerOptions ReadOptions = new()
+        {
+            PropertyNameCaseInsensitive = true
+        };
 
         // -----------------------------------------------------------------
         // Load
@@ -88,7 +99,9 @@ namespace Gears
                 AssetMeta? meta;
                 try
                 {
-                    meta = JsonSerializer.Deserialize<AssetMeta>(File.ReadAllText(metaFile), ReadOptions);
+                    meta = JsonSerializer.Deserialize(
+    File.ReadAllText(metaFile),
+    AssetBundleJsonContext.Default.AssetMeta);
                 }
                 catch (JsonException e)
                 {
@@ -147,7 +160,9 @@ namespace Gears
 
             try
             {
-                return JsonSerializer.Deserialize<BundleMeta>(File.ReadAllText(nlabfPath), ReadOptions);
+                return JsonSerializer.Deserialize(
+    File.ReadAllText(nlabfPath),
+    AssetBundleJsonContext.Default.BundleMeta);
             }
             catch (JsonException e)
             {
@@ -164,7 +179,7 @@ namespace Gears
                 ? Path.Combine(bundleRoot, "Assets", meta.Location.TrimStart('/', '\\').Replace('/', Path.DirectorySeparatorChar))
                 : "";
 
-            // Deterministic across runs for the same nlam UUID: Guid.GetHashCode()
+            // Deterministic across runs for the same nlab UUID: Guid.GetHashCode()
             // hashes the GUID's actual bytes. string.GetHashCode() would NOT work
             // here - .NET randomizes it per process by default.
             int? uuid = Guid.TryParse(meta.UUID, out Guid parsed) ? parsed.GetHashCode() : null;
@@ -228,7 +243,11 @@ namespace Gears
                     if (!File.Exists(assetPath))
                         Logger.Instance.LogWarning($"Bundle '{bundle.Name}': raw shader '{name}' missing at '{assetPath}', skipped.");
                     else
-                        rawShaders[name] = Path.GetFullPath(assetPath); // used by the Shader entries that load after this
+                    {
+                        string fullPath = Path.GetFullPath(assetPath);
+                        rawShaders[name] = fullPath; // used by the Shader entries that load after this
+                        LoadedRawShaders[name] = fullPath; // global lookup for ShaderProgram
+                    }
                     break;
 
                 default:
