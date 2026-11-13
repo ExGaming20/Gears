@@ -253,7 +253,7 @@ namespace Gears
 
             bool stressCaptureFrame = CameraStressTest.Enabled && CameraStressTest.Advance(camObj);
 
-            activeScene.Render(args.Time);
+            activeScene.Render(args.Time, mainCam);
             SortRenderQueue();
 
             Matrix4 view = mainCam?.ViewMatrix ?? Matrix4.Identity;
@@ -588,7 +588,7 @@ namespace Gears
 
             ProbeCaptureQueue.Clear();
             _capturingForProbe = true;
-            activeScene.Render(activeScene.DeltaTime);
+            activeScene.Render(activeScene.DeltaTime, activeScene.MainCamera); 
             _capturingForProbe = false;
         }
 

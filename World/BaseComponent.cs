@@ -158,7 +158,7 @@ public class BaseComponent
     // Rendering callbacks (OpenTK-specific)
     // -----------------------------------------------------------------------
 
-    public virtual void OnRenderFrame(double deltaTime) { }
+    public virtual void OnRenderFrame(double deltaTime, Camera renderingCamera) { }
     public virtual void OnResize(Vector2i newSize) { }
 
     // -----------------------------------------------------------------------

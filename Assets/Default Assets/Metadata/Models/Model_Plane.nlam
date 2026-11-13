@@ -1,6 +1,1 @@
-{
-  "Type": "Model",
-  "Location": "/Models/Plane.obj",
-  "UUID": "0fe6a3c4-0ce9-45c8-9270-8b4822b49b0f",
-  "Name": "Plane"
-}
+{"Type": "Model","Location": "/Models/Plane.obj","UUID": "0fe6a3c4-0ce9-45c8-9270-8b4822b49b0f","Name": "Plane"}

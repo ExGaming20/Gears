@@ -1,4 +1,5 @@
 ﻿using Gears.Graphics;
+using OpenTK.Mathematics;
 
 namespace Gears.World.Components
 {
@@ -36,7 +37,7 @@ namespace Gears.World.Components
             _meshFilter = null;
         }
 
-        public override void OnRenderFrame(double deltaTime)
+        public override void OnRenderFrame(double deltaTime, Camera renderingCamera)
         {
             if (!Visible) return;
 
@@ -44,9 +45,10 @@ namespace Gears.World.Components
 
             if (_meshFilter?.Mesh == null) return;
 
+            if (OutSideOfCameraFrustum(_meshFilter.AABB, renderingCamera)) return;
+
             foreach (var subMesh in _meshFilter.Mesh.SubMeshes)
             {
-                // SortLayer controls draw order; GameObject.Layer controls light/camera culling
                 Game.AddRenderRequest(subMesh, GameObject.Transform.WorldMatrix, SortLayer, GameObject.Layer, Material);
             }
         }
@@ -56,6 +58,46 @@ namespace Gears.World.Components
             base.OnDestroy();
             _meshFilter = null;
             Material = null;
+        }
+
+        private bool OutSideOfCameraFrustum(Box3 localAabb, Camera renderingCamera)
+        {
+            var camera = renderingCamera;
+            if (camera == null) return false;
+
+            var wm = GameObject.Transform.WorldMatrix;
+            Vector3 min = new Vector3(float.PositiveInfinity);
+            Vector3 max = new Vector3(float.NegativeInfinity);
+
+            for (int i = 0; i < 8; i++)
+            {
+                var corner = new Vector3(
+                    (i & 1) == 0 ? localAabb.Min.X : localAabb.Max.X,
+                    (i & 2) == 0 ? localAabb.Min.Y : localAabb.Max.Y,
+                    (i & 4) == 0 ? localAabb.Min.Z : localAabb.Max.Z);
+                var world = Vector3.TransformPosition(corner, wm);
+                min = Vector3.ComponentMin(min, world);
+                max = Vector3.ComponentMax(max, world);
+            }
+
+            return !FrustumIntersectsAABB(camera.GetFrustum(), new Box3(min, max));
+        }
+
+        private static bool FrustumIntersectsAABB(Vector4[] frustumPlanes, Box3 aabb)
+        {
+            foreach (var plane in frustumPlanes)
+            {
+                var p = new Vector3(
+                    plane.X >= 0 ? aabb.Max.X : aabb.Min.X,
+                    plane.Y >= 0 ? aabb.Max.Y : aabb.Min.Y,
+                    plane.Z >= 0 ? aabb.Max.Z : aabb.Min.Z
+                );
+
+                if (plane.X * p.X + plane.Y * p.Y + plane.Z * p.Z + plane.W < 0)
+                    return false;
+            }
+
+            return true;
         }
     }
 }

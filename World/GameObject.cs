@@ -107,12 +107,12 @@ public class GameObject
     // Rendering & Input
     // -----------------------------------------------------------------------
 
-    public void OnRenderFrame(double deltaTime)
+    public void OnRenderFrame(double deltaTime, Camera renderingCamera)
     {
         if (!IsActive || IsDestroyed) return;
 
-        foreach (var c in _components) c.OnRenderFrame(deltaTime);
-        foreach (var child in _children) child.OnRenderFrame(deltaTime);
+        foreach (var c in _components) c.OnRenderFrame(deltaTime, renderingCamera);
+        foreach (var child in _children) child.OnRenderFrame(deltaTime, renderingCamera);
     }
 
     public void OnResize(Vector2i newSize)
