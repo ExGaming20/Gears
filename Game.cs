@@ -253,7 +253,7 @@ namespace Gears
 
             bool stressCaptureFrame = CameraStressTest.Enabled && CameraStressTest.Advance(camObj);
 
-            activeScene.Render(args.Time, mainCam);
+            activeScene.Render(args.Time);
             SortRenderQueue();
 
             Matrix4 view = mainCam?.ViewMatrix ?? Matrix4.Identity;
@@ -424,9 +424,9 @@ namespace Gears
         protected override void OnMouseMove(MouseMoveEventArgs e) { base.OnMouseMove(e); SceneManager.ActiveScene?.OnMouseMove(e); }
         protected override void OnMouseWheel(MouseWheelEventArgs e) { base.OnMouseWheel(e); SceneManager.ActiveScene?.OnMouseWheel(e); }
 
-        public static void AddRenderRequest(SubMesh subMesh, Matrix4 modelMatrix, int sortLayer = 0, Layer objectLayer = Layer.Default, Material? materialOverride = null)
+        public static void AddRenderRequest(SubMesh subMesh, Matrix4 modelMatrix, int sortLayer = 0, Layer objectLayer = Layer.Default, Material? materialOverride = null, Box3? worldBounds = null)
         {
-            var req = new RenderRequest(subMesh, modelMatrix, sortLayer, objectLayer, materialOverride);
+            var req = new RenderRequest(subMesh, modelMatrix, sortLayer, objectLayer, materialOverride, worldBounds);
 
             if (_capturingForProbe)
                 ProbeCaptureQueue.Add(req);
@@ -474,6 +474,7 @@ namespace Gears
         {
             var queue = queueOverride ?? RenderQueue;
             double totalTime = SceneManager.ActiveScene?.TotalTime ?? 0.0;
+            Frustum frustum = Frustum.FromViewProjection(view * projection);
 
             int currentShaderUUID = int.MinValue;
             Shader? currentShader = null;
@@ -481,6 +482,9 @@ namespace Gears
 
             foreach (RenderRequest req in queue)
             {
+                if (req.WorldBounds is Box3 bounds && !frustum.Intersects(bounds))
+                    continue;
+
                 SubMesh subMesh = req.subMesh;
 
                 if (!haveShader || req.material.ShaderUUID != currentShaderUUID)
@@ -554,13 +558,16 @@ namespace Gears
             public bool Transparent;
             public int SortLayer;
             public Layer ObjectLayer;
+            /// <summary>World-space AABB for per-pass frustum culling. Null means "always visible".</summary>
+            public Box3? WorldBounds;
 
-            public RenderRequest(SubMesh subMesh, Matrix4 modelMatrix, int sortLayer = 0, Layer objectLayer = Layer.Default, Material? materialOverride = null)
+            public RenderRequest(SubMesh subMesh, Matrix4 modelMatrix, int sortLayer = 0, Layer objectLayer = Layer.Default, Material? materialOverride = null, Box3? worldBounds = null)
             {
                 this.subMesh = subMesh;
                 this.ModelMatrix = modelMatrix;
                 this.SortLayer = sortLayer;
                 this.ObjectLayer = objectLayer;
+                this.WorldBounds = worldBounds;
 
                 if (materialOverride != null)
                 {
@@ -588,7 +595,7 @@ namespace Gears
 
             ProbeCaptureQueue.Clear();
             _capturingForProbe = true;
-            activeScene.Render(activeScene.DeltaTime, activeScene.MainCamera); 
+            activeScene.Render(activeScene.DeltaTime);
             _capturingForProbe = false;
         }
 

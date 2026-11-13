@@ -21,7 +21,9 @@ namespace Gears.World.Components
         }
 
         private Box3 _aabb;
+        private bool _hasAABB;
         public Box3 AABB => _aabb;
+        public bool HasAABB => _hasAABB;
 
         public MeshFilter()
         {
@@ -36,23 +38,31 @@ namespace Gears.World.Components
         {
             if (_mesh?.SubMeshes is not { Count: > 0 })
             {
-                _aabb = new Box3(Vector3.Zero, Vector3.Zero);
+                _hasAABB = false;
                 return;
             }
 
             Vector3 min = new Vector3(float.PositiveInfinity);
             Vector3 max = new Vector3(float.NegativeInfinity);
+            bool any = false;
 
             foreach (var sm in _mesh.SubMeshes)
-            { 
-                foreach (var v in sm.Vertices)
-                {
-                    min = Vector3.ComponentMin(min, v);
-                    max = Vector3.ComponentMax(max, v);
-                }
+            {
+                if (!sm.TryGetBounds(out Box3 bounds)) continue;
+
+                min = Vector3.ComponentMin(min, bounds.Min);
+                max = Vector3.ComponentMax(max, bounds.Max);
+                any = true;
+            }
+
+            if (!any)
+            {
+                _hasAABB = false;
+                return;
             }
 
             _aabb = new Box3(min, max);
+            _hasAABB = true;
         }
 
         public override void OnDestroy()

@@ -27,9 +27,10 @@ namespace Gears.Graphics
     /// only reallocates when that changes. Lights past the slot count simply don't get a shadow
     /// this frame (ShadowIndex stays -1) rather than the array growing without bound.
     ///
-    /// Cost note: every shadow-casting light re-renders the full opaque queue, unculled, every
-    /// frame. Fine for a handful of lights; a lot of shadow casters at once will get expensive
-    /// fast (up to 8 + 4*6 = 32 extra full scene passes/frame at the current caps).
+    /// Cost note: every shadow-casting light re-renders the opaque queue, now frustum-culled
+    /// against that light's own view/projection. Fine for a handful of lights; a lot of shadow
+    /// casters at once will still get expensive fast (up to 8 + 4*6 = 32 extra scene passes/frame
+    /// at the current caps).
     /// </summary>
     public class ShadowMapRenderer : IDisposable
     {
@@ -210,9 +211,12 @@ namespace Gears.Graphics
             _shadowDepthShader.SetUniform("view", view);
             _shadowDepthShader.SetUniform("projection", proj);
 
+            Frustum frustum = Frustum.FromViewProjection(view * proj);
+
             foreach (var req in queue)
             {
                 if (req.Transparent) continue;
+                if (req.WorldBounds is Box3 bounds && !frustum.Intersects(bounds)) continue;
                 var mesh = getOrCreateDrawMesh(req.subMesh);
                 mesh.DrawDepthOnly(_shadowDepthShader, req.ModelMatrix);
             }
@@ -239,9 +243,12 @@ namespace Gears.Graphics
                 Matrix4 view = Matrix4.LookAt(l.Position, l.Position + Directions[face], UpVectors[face]);
                 _shadowCubeShader.SetUniform("view", view);
 
+                Frustum frustum = Frustum.FromViewProjection(view * proj);
+
                 foreach (var req in queue)
                 {
                     if (req.Transparent) continue;
+                    if (req.WorldBounds is Box3 bounds && !frustum.Intersects(bounds)) continue;
                     var mesh = getOrCreateDrawMesh(req.subMesh);
                     mesh.DrawDepthOnly(_shadowCubeShader, req.ModelMatrix);
                 }

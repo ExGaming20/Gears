@@ -5,18 +5,61 @@ namespace Gears.World.Components
 {
     public class Camera : BaseComponent
     {
-        public float FOV { get; set; } = 90f;
-        public float NearClip { get; set; } = 0.01f;
-        public float FarClip { get; set; } = 1000f;
+        private float _fov = 90f;
+        private float _nearClip = 0.01f;
+        private float _farClip = 1000f;
         private Matrix4 _viewMatrix = Matrix4.Identity;
         private Matrix4 _projectionMatrix = Matrix4.Identity;
         private bool _viewDirty = true;
         private bool _projDirty = true;
         private bool _frustumDirty = true;
         private Vector2i _lastScreenSize;
-        private Vector4[] _frustumPlanes = new Vector4[6];
+        private Frustum _frustum;
 
-        public RenderTexture? Target { get; set; }
+        public float FOV
+        {
+            get => _fov;
+            set
+            {
+                if (_fov == value) return;
+                _fov = value;
+                _projDirty = true;
+            }
+        }
+
+        public float NearClip
+        {
+            get => _nearClip;
+            set
+            {
+                if (_nearClip == value) return;
+                _nearClip = value;
+                _projDirty = true;
+            }
+        }
+
+        public float FarClip
+        {
+            get => _farClip;
+            set
+            {
+                if (_farClip == value) return;
+                _farClip = value;
+                _projDirty = true;
+            }
+        }
+
+        private RenderTexture? _target;
+        public RenderTexture? Target
+        {
+            get => _target;
+            set
+            {
+                if (_target == value) return;
+                _target = value;
+                _projDirty = true;
+            }
+        }
 
         public Matrix4 ViewMatrix
         {
@@ -77,73 +120,14 @@ namespace Gears.World.Components
             _frustumDirty = true;
         }
 
-        public Vector4[] GetFrustum()
+        public Frustum GetFrustum()
         {
             if (!_frustumDirty)
-                return _frustumPlanes;
+                return _frustum;
 
-            Matrix4 vp = ProjectionMatrix * ViewMatrix;
-
-            // Left: Row3 + Row0
-            _frustumPlanes[0] = new Vector4(
-                vp.M14 + vp.M11,
-                vp.M24 + vp.M21,
-                vp.M34 + vp.M31,
-                vp.M44 + vp.M41);
-
-            // Right: Row3 - Row0
-            _frustumPlanes[1] = new Vector4(
-                vp.M14 - vp.M11,
-                vp.M24 - vp.M21,
-                vp.M34 - vp.M31,
-                vp.M44 - vp.M41);
-
-            // Bottom: Row3 + Row1
-            _frustumPlanes[2] = new Vector4(
-                vp.M14 + vp.M12,
-                vp.M24 + vp.M22,
-                vp.M34 + vp.M32,
-                vp.M44 + vp.M42);
-
-            // Top: Row3 - Row1
-            _frustumPlanes[3] = new Vector4(
-                vp.M14 - vp.M12,
-                vp.M24 - vp.M22,
-                vp.M34 - vp.M32,
-                vp.M44 - vp.M42);
-
-            // Near: Row3 + Row2
-            _frustumPlanes[4] = new Vector4(
-                vp.M14 + vp.M13,
-                vp.M24 + vp.M23,
-                vp.M34 + vp.M33,
-                vp.M44 + vp.M43);
-
-            // Far: Row3 - Row2
-            _frustumPlanes[5] = new Vector4(
-                vp.M14 - vp.M13,
-                vp.M24 - vp.M23,
-                vp.M34 - vp.M33,
-                vp.M44 - vp.M43);
-
-            for (int i = 0; i < 6; i++)
-            {
-                Vector3 n = new Vector3(_frustumPlanes[i].X,
-                                        _frustumPlanes[i].Y,
-                                        _frustumPlanes[i].Z);
-                float len = n.Length;
-                if (len > 0f)
-                {
-                    _frustumPlanes[i] = new Vector4(
-                        _frustumPlanes[i].X / len,
-                        _frustumPlanes[i].Y / len,
-                        _frustumPlanes[i].Z / len,
-                        _frustumPlanes[i].W / len);
-                }
-            }
-
+            _frustum = Frustum.FromViewProjection(ViewMatrix * ProjectionMatrix);
             _frustumDirty = false;
-            return _frustumPlanes;
+            return _frustum;
         }
 
         public static Matrix4 CreatePerspective(float fov, float aspect, float zNear, float zFar)

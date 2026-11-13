@@ -106,13 +106,13 @@ namespace Gears.World
             }
         }
 
-        public void Render(double deltaTime, Camera renderingCamera)
+        public void Render(double deltaTime)
         {
             FlushPendingChanges();
 
             foreach (var obj in _rootObjects)
             {
-                obj.OnRenderFrame(deltaTime, renderingCamera);
+                obj.OnRenderFrame(deltaTime);
             }
         }
 

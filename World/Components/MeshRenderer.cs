@@ -37,7 +37,7 @@ namespace Gears.World.Components
             _meshFilter = null;
         }
 
-        public override void OnRenderFrame(double deltaTime, Camera renderingCamera)
+        public override void OnRenderFrame(double deltaTime)
         {
             if (!Visible) return;
 
@@ -45,11 +45,11 @@ namespace Gears.World.Components
 
             if (_meshFilter?.Mesh == null) return;
 
-            if (OutSideOfCameraFrustum(_meshFilter.AABB, renderingCamera)) return;
+            Box3? worldBounds = _meshFilter.HasAABB ? TransformBoundsToWorld(_meshFilter.AABB) : null;
 
             foreach (var subMesh in _meshFilter.Mesh.SubMeshes)
             {
-                Game.AddRenderRequest(subMesh, GameObject.Transform.WorldMatrix, SortLayer, GameObject.Layer, Material);
+                Game.AddRenderRequest(subMesh, GameObject.Transform.WorldMatrix, SortLayer, GameObject.Layer, Material, worldBounds);
             }
         }
 
@@ -60,12 +60,14 @@ namespace Gears.World.Components
             Material = null;
         }
 
-        private bool OutSideOfCameraFrustum(Box3 localAabb, Camera renderingCamera)
+        /// <summary>
+        /// Builds a world-space AABB from the mesh's local bounds. Culling itself happens
+        /// per render pass (main camera, shadow lights, render textures, probes) so every
+        /// pass tests against its own view/projection.
+        /// </summary>
+        private Box3 TransformBoundsToWorld(Box3 localAabb)
         {
-            var camera = renderingCamera;
-            if (camera == null) return false;
-
-            var wm = GameObject.Transform.WorldMatrix;
+            Matrix4 wm = GameObject.Transform.WorldMatrix;
             Vector3 min = new Vector3(float.PositiveInfinity);
             Vector3 max = new Vector3(float.NegativeInfinity);
 
@@ -80,24 +82,7 @@ namespace Gears.World.Components
                 max = Vector3.ComponentMax(max, world);
             }
 
-            return !FrustumIntersectsAABB(camera.GetFrustum(), new Box3(min, max));
-        }
-
-        private static bool FrustumIntersectsAABB(Vector4[] frustumPlanes, Box3 aabb)
-        {
-            foreach (var plane in frustumPlanes)
-            {
-                var p = new Vector3(
-                    plane.X >= 0 ? aabb.Max.X : aabb.Min.X,
-                    plane.Y >= 0 ? aabb.Max.Y : aabb.Min.Y,
-                    plane.Z >= 0 ? aabb.Max.Z : aabb.Min.Z
-                );
-
-                if (plane.X * p.X + plane.Y * p.Y + plane.Z * p.Z + plane.W < 0)
-                    return false;
-            }
-
-            return true;
+            return new Box3(min, max);
         }
     }
 }

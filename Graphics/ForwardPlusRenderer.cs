@@ -138,10 +138,13 @@ namespace Gears.Graphics
             _depthPrepassShader.SetUniform("view", view);
             _depthPrepassShader.SetUniform("projection", projection);
 
+            Frustum frustum = Frustum.FromViewProjection(view * projection);
+
             foreach (var req in queue)
             {
                 // Transparent geometry shouldn't contribute conservative "solid" depth for culling.
                 if (req.Transparent) continue;
+                if (req.WorldBounds is Box3 bounds && !frustum.Intersects(bounds)) continue;
                 var drawMesh = getOrCreateDrawMesh(req.subMesh);
                 drawMesh.DrawDepthOnly(_depthPrepassShader, req.ModelMatrix);
             }
