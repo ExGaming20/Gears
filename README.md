@@ -1,12 +1,12 @@
 ﻿# Gears Engine
 
-Last updated: November 12, 2026
+Last updated: November 19, 2026
 
 ## Important Info
 
 The engine is still being worked on, so this README won't be updated every commit. I'll update it when there's a big change or if something breaks after a change.
 
-Also I have used the assistance of AI to write long scripts that I know the functionality of and to add simple script overviews. I do verify and moderate the code it gives and I dont just paste it into the project.
+Also I have used the assistance of AI to write long scripts that I know the functionality of and to add simple script overviews. I do verify and moderate the code it gives and I dont just paste it into the project. I make sure that the code is correct and maintainable.
 
 ## Status
 
@@ -30,8 +30,7 @@ As of November 2026, it has:
 - GameObjects with components
 - Scene loading
 - Simple input system
-- Frustum culling
-- AABB optimization for GameObject meshes
+- Simple optimizations
 - Some other stuff
 
 ## How to Build
