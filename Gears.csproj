@@ -9,6 +9,7 @@
 		<PublishAot>true</PublishAot>
 		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
 		<SelfContained>true</SelfContained>
+		<RuntimeFrameworkVersion>8.0.31</RuntimeFrameworkVersion>
 	</PropertyGroup>
 
 	<ItemGroup>
