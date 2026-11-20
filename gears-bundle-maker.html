@@ -1921,6 +1921,21 @@
         const fmtSize = n =>
             n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
         const json = o => JSON.stringify(o, null, 2) + '\n';
+        const jsonMin = o => JSON.stringify(o);
+        function prettyJson(text) {
+            try {
+                return json(JSON.parse(text));
+            } catch (e) {
+                return text;
+            }
+        }
+        function compactJson(text) {
+            try {
+                return JSON.stringify(JSON.parse(text));
+            } catch (e) {
+                return text;
+            }
+        }
         const enc = new TextEncoder();
         const dec = new TextDecoder('utf-8');
         const decodeText = bytes => dec.decode(bytes).replace(/^\uFEFF/, '');
@@ -2301,7 +2316,10 @@
             return '';
         }
         function assetBytes(asset) {
-            return typeOf(asset).format === 'binary' ? asset.bytes || new Uint8Array(0) : enc.encode(assetText(asset));
+            const type = typeOf(asset);
+            if (type.format === 'binary') return asset.bytes || new Uint8Array(0);
+            const text = assetText(asset);
+            return enc.encode(type.format === 'json' || type.jsonText ? compactJson(text) : text);
         }
 
         function getSetting(asset, key) {
@@ -2330,7 +2348,368 @@
             }
             target[last] = value;
         }
+        // ---------- raw shader interface: uniforms / ins / outs ----------
+        // Algorithm: single-pass finite state machine scanner (brace-depth statement splitter + qualifier tokenizer)
+        const GLSL_QUAL = new Set([
+            'flat', 'smooth', 'noperspective', 'centroid', 'sample', 'patch', 'highp', 'mediump', 'lowp',
+            'precise', 'invariant', 'coherent', 'volatile', 'restrict', 'readonly', 'writeonly'
+        ]);
+        const GLSL_OPAQUE = /^(?:[iu]?(?:sampler|image|texture)|atomic_uint)/;
+        const SHADER_META_KEYS = ['uniforms', 'ins', 'outs'];
+        let glslStructs = null; // struct name -> [{ base, dims, name }], only while a parse runs
+        let glslCount = 0; // leaf counter: an explicit location or binding grows by one for each leaf
+        function glslIdent(c) {
+            return (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57) || c === 95;
+        }
+        function glslInt(s, a, b) {
+            while (a < b && s.charCodeAt(a) <= 32) a++;
+            while (b > a && s.charCodeAt(b - 1) <= 32) b--;
+            if (a >= b) return -1;
+            let n = 0,
+                c;
+            for (; a < b; a++) {
+                c = s.charCodeAt(a);
+                if (c < 48 || c > 57) return -1;
+                n = n * 10 + c - 48;
+            }
+            return n;
+        }
+        function glslLayoutInt(t, a, b, key) {
+            let p = t.indexOf(key, a);
+            while (p >= 0 && p < b) {
+                const q = p + key.length;
+                if (!glslIdent(t.charCodeAt(p - 1)) && !glslIdent(t.charCodeAt(q))) {
+                    let i = q;
+                    while (i < b && t.charCodeAt(i) <= 32) i++;
+                    if (t.charCodeAt(i) === 61) {
+                        i++;
+                        while (i < b && t.charCodeAt(i) <= 32) i++;
+                        let n = 0,
+                            any = false,
+                            c;
+                        while (i < b && (c = t.charCodeAt(i)) >= 48 && c <= 57) {
+                            n = n * 10 + c - 48;
+                            i++;
+                            any = true;
+                        }
+                        if (any) return n;
+                    }
+                }
+                p = t.indexOf(key, p + 1);
+            }
+            return -1;
+        }
+        function glslHas(list, name) {
+            const l = name.length;
+            for (let k = 0; k < list.length; k++) {
+                const n = list[k].name;
+                if (n.length >= l && n.startsWith(name) && (n.length === l || n.charCodeAt(l) === 91 || n.charCodeAt(l) === 46))
+                    return true;
+            }
+            return false;
+        }
+        function glslLeaf(list, type, name, loc, bind) {
+            const e = { type: type.replace(/\s+/g, ''), name: name, location: loc >= 0 ? loc + glslCount : -1 };
+            if (GLSL_OPAQUE.test(type)) e.binding = bind >= 0 ? bind + glslCount : -1;
+            glslCount++;
+            list.push(e);
+        }
+        // Expands arrays (when the size is a plain number) and structs into one entry for each leaf value.
+        function glslExpand(list, base, dims, di, name, loc, bind) {
+            const s = di < dims.length ? dims.indexOf('[', di) : -1;
+            if (s >= 0) {
+                const e = dims.indexOf(']', s);
+                const n = e < 0 ? -1 : glslInt(dims, s + 1, e);
+                if (n < 0) {
+                    glslLeaf(list, base + dims.substring(s), name, loc, bind);
+                    return;
+                }
+                for (let i = 0; i < n; i++) glslExpand(list, base, dims, e + 1, name + '[' + i + ']', loc, bind);
+                return;
+            }
+            const m = glslStructs !== null ? glslStructs[base] : undefined;
+            if (m !== undefined) {
+                for (let k = 0; k < m.length; k++)
+                    glslExpand(list, m[k].base, m[k].dims, 0, name + '.' + m[k].name, loc, bind);
+                return;
+            }
+            glslLeaf(list, base, name, loc, bind);
+        }
+        function glslDeclarator(t, a, b, base, tsuf, list, kind, loc, bind) {
+            let i = a;
+            while (i < b && t.charCodeAt(i) <= 32) i++;
+            let j = i;
+            while (j < b && glslIdent(t.charCodeAt(j))) j++;
+            if (j === i) return;
+            const name = t.substring(i, j);
+            if (name.charCodeAt(0) === 103 && name.startsWith('gl_')) return;
+            let dims = '';
+            for (;;) {
+                let m = j;
+                while (m < b && t.charCodeAt(m) <= 32) m++;
+                if (m >= b || t.charCodeAt(m) !== 91) break;
+                const e = t.indexOf(']', m);
+                if (e < 0 || e >= b) break;
+                dims += t.substring(m, e + 1);
+                j = e + 1;
+            }
+            dims += tsuf;
+            if (kind === 3) {
+                list.push({ base: base, dims: dims, name: name });
+                return;
+            }
+            if (glslHas(list, name)) return;
+            glslCount = 0;
+            if (kind === 0) glslExpand(list, base, dims, 0, name, loc, bind);
+            else glslLeaf(list, base + dims, name, loc, bind);
+        }
+        // members === null: a global declaration (uniform, in, out). Otherwise: one struct member statement.
+        function glslStatement(t, a, b, res, members) {
+            let kind = members ? 3 : -1,
+                loc = -1,
+                bind = -1,
+                i = a,
+                c;
+            for (;;) {
+                while (i < b && t.charCodeAt(i) <= 32) i++;
+                if (i >= b) return;
+                if (t.startsWith('layout', i)) {
+                    let j = i + 6;
+                    while (j < b && t.charCodeAt(j) <= 32) j++;
+                    if (t.charCodeAt(j) === 40) {
+                        const ls = j + 1;
+                        let d = 0;
+                        for (; j < b; j++) {
+                            c = t.charCodeAt(j);
+                            if (c === 40) d++;
+                            else if (c === 41 && --d === 0) break;
+                        }
+                        let v = glslLayoutInt(t, ls, j, 'location');
+                        if (v >= 0) loc = v;
+                        v = glslLayoutInt(t, ls, j, 'binding');
+                        if (v >= 0) bind = v;
+                        i = j + 1;
+                        continue;
+                    }
+                }
+                let j = i;
+                while (j < b && glslIdent(t.charCodeAt(j))) j++;
+                if (j === i) return;
+                const w = t.substring(i, j);
+                i = j;
+                if (w === 'uniform') kind = 0;
+                else if (w === 'in') kind = 1;
+                else if (w === 'out') kind = 2;
+                else if (!GLSL_QUAL.has(w)) {
+                    if (kind < 0) return;
+                    let tsuf = '';
+                    for (;;) {
+                        let m = i;
+                        while (m < b && t.charCodeAt(m) <= 32) m++;
+                        if (m >= b || t.charCodeAt(m) !== 91) break;
+                        const e = t.indexOf(']', m);
+                        if (e < 0 || e >= b) break;
+                        tsuf += t.substring(m, e + 1);
+                        i = e + 1;
+                    }
+                    const list = members ? members : res[kind];
+                    let ds = i,
+                        d = 0;
+                    for (let p = i; p <= b; p++) {
+                        c = p < b ? t.charCodeAt(p) : 44;
+                        if (c === 40 || c === 91) d++;
+                        else if (c === 41 || c === 93) d--;
+                        else if (c === 44 && d === 0) {
+                            glslDeclarator(t, ds, p, w, tsuf, list, kind, loc, bind);
+                            loc = -1;
+                            bind = -1;
+                            ds = p + 1;
+                        }
+                    }
+                    return;
+                }
+            }
+        }
+        function glslStructName(t, a, b) {
+            while (a < b && t.charCodeAt(a) <= 32) a++;
+            if (!t.startsWith('struct', a)) return null;
+            a += 6;
+            if (a < b && glslIdent(t.charCodeAt(a))) return null;
+            while (a < b && t.charCodeAt(a) <= 32) a++;
+            let j = a;
+            while (j < b && glslIdent(t.charCodeAt(j))) j++;
+            return j > a ? t.substring(a, j) : null;
+        }
+        // Returns [uniforms, ins, outs]. Each entry: { type, name, location } (uniforms of opaque type also have binding).
+        function parseGlslInterface(src) {
+            const res = [[], [], []];
+            const t = src.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*|^[ \t]*#[^\n]*/gm, ' ');
+            const n = t.length;
+            glslStructs = null;
+            let depth = 0,
+                start = 0,
+                sName = null,
+                body = 0;
+            for (let i = 0; i < n; i++) {
+                const c = t.charCodeAt(i);
+                if (c === 123) {
+                    if (depth++ === 0) {
+                        sName = glslStructName(t, start, i);
+                        body = i + 1;
+                    }
+                } else if (c === 125) {
+                    if (depth > 0 && --depth === 0) {
+                        if (sName !== null) {
+                            const mem = [];
+                            let ps = body;
+                            for (let p = body; p < i; p++)
+                                if (t.charCodeAt(p) === 59) {
+                                    glslStatement(t, ps, p, null, mem);
+                                    ps = p + 1;
+                                }
+                            if (glslStructs === null) glslStructs = Object.create(null);
+                            glslStructs[sName] = mem;
+                            sName = null;
+                        }
+                        start = i + 1;
+                    }
+                } else if (c === 59 && depth === 0) {
+                    glslStatement(t, start, i, res, null);
+                    start = i + 1;
+                }
+            }
+            glslStructs = null;
+            return res;
+        }
+        function syncShaderMeta(asset) {
+            const src = asset.text == null ? '' : asset.text;
+            if (asset._metaSrc === src) return;
+            const r = parseGlslInterface(src);
+            for (let n = 0; n < 3; n++) {
+                const key = SHADER_META_KEYS[n];
+                let e = null;
+                for (let k = 0; k < asset.extra.length; k++)
+                    if (asset.extra[k].k === key) {
+                        e = asset.extra[k];
+                        break;
+                    }
+                if (e) e.v = r[n];
+                else asset.extra.push({ k: key, v: r[n] });
+            }
+            asset._metaSrc = src;
+        }
+
+        // Shader asset: merge the uniforms of every used raw shader stage (first type wins on a name clash).
+        function syncShaderUniforms(asset) {
+            const sh = asset.data,
+                stages = sh.Drawable ? ['Vertex', 'Geometry', 'Fragment'] : ['Compute'],
+                out = [];
+            for (let i = 0; i < stages.length; i++) {
+                const name = sh[stages[i]];
+                if (!name) continue;
+                const raw = findAsset('RawShader', name);
+                if (!raw) continue;
+                const list = rawList(raw, 'uniforms');
+                for (let u = 0; u < list.length; u++) {
+                    let dup = null;
+                    for (let o = 0; o < out.length; o++)
+                        if (out[o].name === list[u].name) {
+                            dup = out[o];
+                            break;
+                        }
+                    if (dup) {
+                        if (dup.location < 0 && list[u].location >= 0) dup.location = list[u].location;
+                        if (dup.binding !== undefined && dup.binding < 0 && list[u].binding >= 0)
+                            dup.binding = list[u].binding;
+                        continue;
+                    }
+                    const c = { type: list[u].type, name: list[u].name, location: list[u].location };
+                    if (list[u].binding !== undefined) c.binding = list[u].binding;
+                    out.push(c);
+                }
+            }
+            for (let k = 0; k < asset.extra.length; k++)
+                if (asset.extra[k].k === 'uniforms') {
+                    asset.extra[k].v = out;
+                    return;
+                }
+            asset.extra.push({ k: 'uniforms', v: out });
+        }
+        function rawList(raw, key) {
+            syncShaderMeta(raw);
+            for (let k = 0; k < raw.extra.length; k++) if (raw.extra[k].k === key) return raw.extra[k].v;
+            return [];
+        }
+        // Checks that the outputs of each stage match the inputs of the next stage, and that a uniform
+        // has the same type in all stages. Calls report(severity, message) for each problem.
+        // Returns the number of problems, or -1 when a stage is missing and the check cannot run.
+        function checkShaderInterface(shader, report) {
+            const names = ['Vertex', 'Geometry', 'Fragment'],
+                st = [],
+                raws = [];
+            for (let i = 0; i < 3; i++) {
+                const name = shader[names[i]];
+                if (!name) continue;
+                const raw = findAsset('RawShader', name);
+                if (!raw) return -1;
+                st.push(names[i]);
+                raws.push(raw);
+            }
+            if (st[0] !== 'Vertex' || st[st.length - 1] !== 'Fragment') return -1;
+            let bad = 0;
+            for (let s = 1; s < st.length; s++) {
+                const outs = rawList(raws[s - 1], 'outs'),
+                    ins = rawList(raws[s], 'ins'),
+                    geo = st[s] === 'Geometry';
+                for (let i = 0; i < ins.length; i++) {
+                    const a = ins[i];
+                    let m = null;
+                    if (a.location >= 0)
+                        for (let o = 0; o < outs.length; o++)
+                            if (outs[o].location === a.location) {
+                                m = outs[o];
+                                break;
+                            }
+                    if (!m)
+                        for (let o = 0; o < outs.length; o++)
+                            if (outs[o].name === a.name) {
+                                m = outs[o];
+                                break;
+                            }
+                    if (!m) {
+                        report('err', st[s] + ' input "' + a.name + '" has no matching output in ' + st[s - 1] + '.');
+                        bad++;
+                        continue;
+                    }
+                    const ty = geo ? a.type.replace(/\[[^\]]*\]$/, '') : a.type;
+                    if (ty !== m.type) {
+                        report(
+                            'err',
+                            'Type mismatch for "' + a.name + '": ' + st[s - 1] + ' output is ' + m.type + ', ' + st[s] + ' input is ' + ty + '.'
+                        );
+                        bad++;
+                    }
+                }
+                const us = rawList(raws[s], 'uniforms');
+                for (let p = 0; p < s; p++) {
+                    const ps = rawList(raws[p], 'uniforms');
+                    for (let i = 0; i < us.length; i++)
+                        for (let k = 0; k < ps.length; k++)
+                            if (ps[k].name === us[i].name && ps[k].type !== us[i].type) {
+                                report(
+                                    'err',
+                                    'Uniform "' + us[i].name + '" is ' + ps[k].type + ' in ' + st[p] + ' and ' + us[i].type + ' in ' + st[s] + '.'
+                                );
+                                bad++;
+                            }
+                }
+            }
+            return bad;
+        }
+
         function nlamObj(asset) {
+            const meta = typeOf(asset).syncMeta;
+            if (meta) meta(asset);
             const o = { Type: asset.type, Location: locationOf(asset), UUID: asset.id, Name: asset.name };
             if (asset.extra.length) o.Extra = asset.extra.map(e => ({ Key: e.k, Value: e.v }));
             return o;
@@ -2342,9 +2721,9 @@
             return o;
         }
         function buildFiles() {
-            const files = [{ path: 'Bundle.nlabf', data: enc.encode(json(nlabfObj())) }];
+            const files = [{ path: 'Bundle.nlabf', data: enc.encode(jsonMin(nlabfObj())) }];
             for (const a of state.assets) {
-                files.push({ path: 'Metadata/' + metaRel(a), data: enc.encode(json(nlamObj(a))) });
+                files.push({ path: 'Metadata/' + metaRel(a), data: enc.encode(jsonMin(nlamObj(a))) });
                 if (hasFile(a)) files.push({ path: 'Assets/' + assetRel(a), data: assetBytes(a) });
             }
             return files;
@@ -2486,7 +2865,7 @@
                 }
                 const text = decodeText(bytes);
                 if (type.format === 'json') asset.data = type.read ? type.read(text) : JSON.parse(text);
-                else asset.text = text;
+                else asset.text = type.jsonText ? prettyJson(text) : text;
             } catch (error) {
                 if (warnings) warnings.push(type.label + ' "' + asset.name + '": ' + error.message);
                 resetPayload(asset);
@@ -2796,7 +3175,7 @@
                             asset.extra.push({
                                 k: e.Key,
                                 v:
-                                    typeof e.Value === 'number' || typeof e.Value === 'boolean'
+                                    typeof e.Value === 'number' || typeof e.Value === 'boolean' || Array.isArray(e.Value)
                                         ? e.Value
                                         : String(e.Value == null ? '' : e.Value)
                             });
@@ -4969,7 +5348,11 @@ void main(){
             box.textContent = '';
             if (!asset || asset.ref) return;
             const P = problemsFor(asset);
-            if (!P.length) return;
+            if (!P.length) {
+                const ok = typeOf(asset).okNote ? typeOf(asset).okNote(asset) : '';
+                if (ok) box.append(el('div', { class: 'note ok', text: ok }));
+                return;
+            }
             const section = secEl(
                 'Problems',
                 el('span', { class: 'badge ' + (P.some(p => p.sev === 'err') ? 'err' : 'warn'), text: P.length })
@@ -5670,7 +6053,7 @@ void main(){
             );
             const kind = v => (typeof v === 'boolean' ? 'bool' : typeof v === 'number' ? 'number' : 'text');
             asset.extra.forEach((e, i) => {
-                if (e.k in managed) return;
+                if (e.k in managed || Array.isArray(e.v)) return;
                 const pr = presets.find(p => p.k === e.k);
                 let val;
                 if (pr && pr.kind === 'enum') {
@@ -6415,6 +6798,7 @@ void main(){
                 '<path d="M12.4 1.6v3M10.9 3.1h3M12.6 11v3M11.1 12.5h3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>',
             extensions: ['nlsf'],
             format: 'json',
+            syncMeta: syncShaderUniforms,
             create: defShader,
             read: parseShader,
             write: shToJson,
@@ -6461,6 +6845,11 @@ void main(){
                     if (shader[stage] && !findAsset('RawShader', shader[stage]))
                         report('warn', stage + ' source "' + shader[stage] + '" not found in this bundle or its references.');
                 }
+                if (shader.Drawable) checkShaderInterface(shader, report);
+            },
+            okNote(asset) {
+                if (!asset.data.Drawable) return '';
+                return checkShaderInterface(asset.data, () => {}) === 0 ? 'Stage inputs, outputs and uniforms match.' : '';
             }
         });
 
@@ -6473,6 +6862,7 @@ void main(){
             extensions: ['shader', 'glsl', 'vert', 'frag', 'geom', 'comp'],
             fixedExtension: 'shader',
             format: 'text',
+            syncMeta: syncShaderMeta,
             starter: () => '// Raw shader source\n',
             onRename(asset, oldName, newName) {
                 for (const shader of state.assets.filter(x => x.type === 'Shader')) {
@@ -6488,6 +6878,7 @@ void main(){
 
         registerAssetType({
             id: 'Scene',
+            jsonText: true,
             label: 'Scene',
             folder: 'Scenes',
             icon:

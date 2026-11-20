@@ -1,6 +1,1 @@
-{
-  "Type": "Texture",
-  "Location": "/Textures/XYZ_cubemap.jpg",
-  "UUID": "c5520878-86fd-4eb0-b597-ff536d2eb789",
-  "Name": "XYZ_cubemap"
-}
+{"Type":"Texture","Location":"/Textures/XYZ_cubemap.jpg","UUID":"c5520878-86fd-4eb0-b597-ff536d2eb789","Name":"XYZ_cubemap"}

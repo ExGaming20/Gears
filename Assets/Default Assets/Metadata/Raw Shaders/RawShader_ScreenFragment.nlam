@@ -1,6 +1,1 @@
-{
-  "Type": "RawShader",
-  "Location": "/Raw Shaders/ScreenFragment.shader",
-  "UUID": "fe8db445-442c-4eac-aca4-0fe62913b22f",
-  "Name": "ScreenFragment"
-}
+{"Type":"RawShader","Location":"/Raw Shaders/ScreenFragment.shader","UUID":"fe8db445-442c-4eac-aca4-0fe62913b22f","Name":"ScreenFragment","Extra":[{"Key":"uniforms","Value":[{"type":"sampler2D","name":"screenTexture","location":-1,"binding":-1}]},{"Key":"ins","Value":[{"type":"vec2","name":"TexCoords","location":-1}]},{"Key":"outs","Value":[{"type":"vec4","name":"FragColor","location":-1}]}]}

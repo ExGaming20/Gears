@@ -1,6 +1,1 @@
-{
-  "Type": "Shader",
-  "Location": "/Shaders/ULitShaderURP.nlsf",
-  "UUID": "9566ad68-6ca7-4a43-a63d-04c9e28d41e9",
-  "Name": "ULitShaderURP"
-}
+{"Type":"Shader","Location":"/Shaders/ULitShaderURP.nlsf","UUID":"9566ad68-6ca7-4a43-a63d-04c9e28d41e9","Name":"ULitShaderURP","Extra":[{"Key":"uniforms","Value":[{"type":"mat4","name":"model","location":-1},{"type":"mat4","name":"view","location":-1},{"type":"mat4","name":"projection","location":-1},{"type":"vec4","name":"baseColor","location":-1},{"type":"vec4","name":"emissionColor","location":-1},{"type":"int","name":"zWrite","location":-1},{"type":"float","name":"timeSinceStart","location":-1},{"type":"int","name":"objectLayer","location":-1},{"type":"int","name":"textureCount","location":-1},{"type":"sampler2D","name":"material_albedo","location":-1,"binding":-1},{"type":"vec2","name":"material_albedoScale","location":-1},{"type":"vec2","name":"material_albedoOffset","location":-1}]}]}

@@ -1,6 +1,1 @@
-{
-  "Type": "RawShader",
-  "Location": "/Raw Shaders/LightCulling.shader",
-  "UUID": "feb62839-5f9e-4159-b6ca-17cfca122662",
-  "Name": "LightCulling"
-}
+{"Type":"RawShader","Location":"/Raw Shaders/LightCulling.shader","UUID":"feb62839-5f9e-4159-b6ca-17cfca122662","Name":"LightCulling","Extra":[{"Key":"uniforms","Value":[{"type":"sampler2D","name":"depthTexture","location":-1,"binding":-1},{"type":"mat4","name":"view","location":-1},{"type":"mat4","name":"invProjection","location":-1},{"type":"vec2","name":"screenSizeF","location":-1},{"type":"vec2","name":"tileCountF","location":-1},{"type":"int","name":"lightCount","location":-1},{"type":"float","name":"nearPlane","location":-1},{"type":"float","name":"farPlane","location":-1}]},{"Key":"ins","Value":[]},{"Key":"outs","Value":[]}]}

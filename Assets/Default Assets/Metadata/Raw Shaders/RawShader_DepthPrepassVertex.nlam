@@ -1,6 +1,1 @@
-{
-  "Type": "RawShader",
-  "Location": "/Raw Shaders/DepthPrepassVertex.shader",
-  "UUID": "54229fb4-021a-4665-bbe5-5f351ece074e",
-  "Name": "DepthPrepassVertex"
-}
+{"Type":"RawShader","Location":"/Raw Shaders/DepthPrepassVertex.shader","UUID":"54229fb4-021a-4665-bbe5-5f351ece074e","Name":"DepthPrepassVertex","Extra":[{"Key":"uniforms","Value":[{"type":"mat4","name":"model","location":-1},{"type":"mat4","name":"view","location":-1},{"type":"mat4","name":"projection","location":-1}]},{"Key":"ins","Value":[{"type":"vec3","name":"aPosition","location":0}]},{"Key":"outs","Value":[]}]}

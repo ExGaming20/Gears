@@ -1,6 +1,1 @@
-{
-  "Type": "RawShader",
-  "Location": "/Raw Shaders/BaseVertex.shader",
-  "UUID": "5af74060-1770-4d5f-a414-2ffa4287742e",
-  "Name": "BaseVertex"
-}
+{"Type":"RawShader","Location":"/Raw Shaders/BaseVertex.shader","UUID":"5af74060-1770-4d5f-a414-2ffa4287742e","Name":"BaseVertex","Extra":[{"Key":"uniforms","Value":[{"type":"mat4","name":"model","location":-1},{"type":"mat4","name":"view","location":-1},{"type":"mat4","name":"projection","location":-1}]},{"Key":"ins","Value":[{"type":"vec3","name":"aPosition","location":0},{"type":"vec2","name":"aUV","location":1},{"type":"vec3","name":"aNormal","location":2}]},{"Key":"outs","Value":[{"type":"vec2","name":"vUV","location":-1},{"type":"vec3","name":"vNormal","location":-1},{"type":"vec3","name":"vFragPos","location":-1}]}]}

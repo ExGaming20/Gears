@@ -1,6 +1,1 @@
-{
-  "Type": "RawShader",
-  "Location": "/Raw Shaders/ShadowCubeVertex.shader",
-  "UUID": "5046d404-a9e5-4cdc-9d11-c400f0acfffd",
-  "Name": "ShadowCubeVertex"
-}
+{"Type":"RawShader","Location":"/Raw Shaders/ShadowCubeVertex.shader","UUID":"5046d404-a9e5-4cdc-9d11-c400f0acfffd","Name":"ShadowCubeVertex","Extra":[{"Key":"uniforms","Value":[{"type":"mat4","name":"model","location":-1},{"type":"mat4","name":"view","location":-1},{"type":"mat4","name":"projection","location":-1}]},{"Key":"ins","Value":[{"type":"vec3","name":"aPosition","location":0}]},{"Key":"outs","Value":[{"type":"vec3","name":"vWorldPos","location":-1}]}]}

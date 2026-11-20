@@ -1,10 +1,1 @@
-{
-  "Name": "LitShaderURP",
-  "DrawableShader": true,
-  "SubShaders": [
-    {
-      "Vertex": "BaseVertex",
-      "Fragment": "BaseFragment"
-    }
-  ]
-}
+{"Name":"LitShaderURP","DrawableShader":true,"SubShaders":[{"Vertex":"BaseVertex","Fragment":"BaseFragment"}]}
